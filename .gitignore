@@ -1,0 +1,16 @@
+node_modules
+dist
+.env
+,env
+.env.local
+*.local
+.DS_Store
+tsconfig.tsbuildinfo
+_reference
+
+# Internal planning & research (not for public repo)
+docs/BUILD-PLAN.md
+docs/HACKATHON-RESEARCH.md
+docs/CHECKPOINT-PRESENTATION.md
+docs/presentation.html
+.venv-pptx
