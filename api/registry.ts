@@ -3,24 +3,19 @@ import { KEYS, storeGet, storeSet } from '../_lib/store.js';
 import { setCors } from '../_lib/cors.js';
 import type { PayGramUser } from '../_lib/types.js';
 
-/** Single function for all user registry ops — shares in-memory store on warm instances. */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     setCors(res);
     if (req.method === 'OPTIONS') return res.status(200).end();
 
     if (req.method === 'GET') {
-      const action = String(req.query.action ?? 'list');
-
-      if (action === 'resolve') {
-        const handle = String(req.query.handle ?? '').replace('@', '').toLowerCase();
-        if (!handle) return res.status(400).json({ error: 'handle required' });
+      const handle = String(req.query.handle ?? '').replace('@', '').toLowerCase();
+      if (handle) {
         const users = (await storeGet<PayGramUser[]>(KEYS.users)) ?? [];
         const user = users.find((u) => u.username?.toLowerCase() === handle);
         if (!user) return res.status(404).json({ error: 'User not found' });
         return res.status(200).json({ user });
       }
-
       const users = (await storeGet<PayGramUser[]>(KEYS.users)) ?? [];
       return res.status(200).json({ users });
     }

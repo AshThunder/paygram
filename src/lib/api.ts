@@ -51,7 +51,7 @@ export async function registerUserApi(payload: {
 export async function resolveUserApi(handle: string): Promise<string | null> {
   const normalized = handle.replace('@', '').toLowerCase();
   const result = await apiFetch<{ user: PayGramUser }>(
-    `/api/registry?action=resolve&handle=${encodeURIComponent(normalized)}`,
+    `/api/registry?handle=${encodeURIComponent(normalized)}`,
   );
   if (result?.user?.walletAddress) {
     registerUser(normalized, result.user.walletAddress);
