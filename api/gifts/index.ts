@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { KEYS, storeGet, storeSet } from '../_lib/store';
-import { setCors } from '../_lib/cors';
-import type { GiftLink } from '../_lib/types';
+import { KEYS, storeGet, storeSet } from '../_lib/store.js';
+import { setCors } from '../_lib/cors.js';
+import type { GiftLink } from '../_lib/types.js';
 
 function uid(): string {
   return crypto.randomUUID().slice(0, 8);
