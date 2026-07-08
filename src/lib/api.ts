@@ -31,7 +31,7 @@ export async function registerUserApi(payload: {
   displayName?: string;
   walletAddress: string;
 }): Promise<PayGramUser | null> {
-  const result = await apiFetch<{ user: PayGramUser }>('/api/registry', {
+  const result = await apiFetch<{ user: PayGramUser }>('/api/user-registry', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
@@ -51,7 +51,7 @@ export async function registerUserApi(payload: {
 export async function resolveUserApi(handle: string): Promise<string | null> {
   const normalized = handle.replace('@', '').toLowerCase();
   const result = await apiFetch<{ user: PayGramUser }>(
-    `/api/registry?handle=${encodeURIComponent(normalized)}`,
+    `/api/user-registry?handle=${encodeURIComponent(normalized)}`,
   );
   if (result?.user?.walletAddress) {
     registerUser(normalized, result.user.walletAddress);
@@ -61,7 +61,7 @@ export async function resolveUserApi(handle: string): Promise<string | null> {
 }
 
 export async function listUsersApi(): Promise<PayGramUser[]> {
-  const result = await apiFetch<{ users: PayGramUser[] }>('/api/registry');
+  const result = await apiFetch<{ users: PayGramUser[] }>('/api/user-registry');
   if (result?.users) {
     const registry: UserRegistry = {};
     for (const u of result.users) {

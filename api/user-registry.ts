@@ -50,7 +50,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
-    console.error('registry failed', err);
+    console.error('user-registry failed', err);
     return res.status(500).json({ error: err instanceof Error ? err.message : 'Internal error' });
   }
 }
