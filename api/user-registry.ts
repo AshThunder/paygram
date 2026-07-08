@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { KEYS, storeGet, storeSet } from '../_lib/store.js';
-import { setCors } from '../_lib/cors.js';
-import type { PayGramUser } from '../_lib/types.js';
+import { KEYS, storeGet, storeSet } from './_lib/store.js';
+import { setCors } from './_lib/cors.js';
+import type { PayGramUser } from './_lib/types.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
