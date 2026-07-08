@@ -15,7 +15,6 @@
   "dependencies": {
     "@magic-ext/evm": "^1.3.0",
     "@particle-network/universal-account-sdk": "^1.0.27",
-    "@vercel/kv": "^3.0.0",
     "ethers": "^6.16.0",
     "magic-sdk": "^33.5.0",
     "react": "^18.3.1",

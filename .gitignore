@@ -14,3 +14,5 @@ docs/HACKATHON-RESEARCH.md
 docs/CHECKPOINT-PRESENTATION.md
 docs/presentation.html
 .venv-pptx
+.vercel
+.env.local
