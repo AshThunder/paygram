@@ -1,34 +1,12 @@
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
-
-const DIR = join(tmpdir(), 'paygram-store');
-
-async function ensureDir(): Promise<void> {
-  try {
-    await access(DIR);
-  } catch {
-    await mkdir(DIR, { recursive: true });
-  }
-}
-
-function pathFor(key: string): string {
-  return join(DIR, `${key.replace(/[^a-z0-9:_-]/gi, '_')}.json`);
-}
+// In-memory store — survives warm invocations; add Upstash/KV later for persistence.
+const memory = new Map<string, unknown>();
 
 export async function storeGet<T>(key: string): Promise<T | null> {
-  await ensureDir();
-  try {
-    const raw = await readFile(pathFor(key), 'utf8');
-    return JSON.parse(raw) as T;
-  } catch {
-    return null;
-  }
+  return (memory.get(key) as T) ?? null;
 }
 
 export async function storeSet<T>(key: string, value: T): Promise<void> {
-  await ensureDir();
-  await writeFile(pathFor(key), JSON.stringify(value), 'utf8');
+  memory.set(key, value);
 }
 
 export async function storeUpdate<T>(key: string, updater: (current: T | null) => T): Promise<T> {
