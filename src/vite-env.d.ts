@@ -9,6 +9,7 @@ interface ImportMetaEnv {
   readonly VITE_BOT_USERNAME: string;
   readonly VITE_MINI_APP_URL: string;
   readonly VITE_DEMO_RECIPIENT_ADDRESS: string;
+  readonly VITE_API_URL: string;
 }
 
 interface ImportMeta {

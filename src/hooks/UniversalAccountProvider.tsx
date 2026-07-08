@@ -19,7 +19,7 @@ type UAContextType = {
   accountInfo: AccountInfo;
   primaryAssets: IAssetsResponse | null;
   isDelegated: boolean;
-  refreshBalance: () => Promise<void>;
+  refreshBalance: () => Promise<IAssetsResponse | null>;
   ensureDelegated: () => Promise<void>;
   signAndSend: (transaction: { rootHash: string; userOps?: unknown[] } & Record<string, unknown>) => Promise<{ transactionId: string }>;
   loading: boolean;
@@ -30,7 +30,7 @@ const UAContext = createContext<UAContextType>({
   accountInfo: { ownerAddress: '', evmSmartAccount: '', solanaSmartAccount: '' },
   primaryAssets: null,
   isDelegated: false,
-  refreshBalance: async () => {},
+  refreshBalance: async () => ({} as IAssetsResponse),
   ensureDelegated: async () => {},
   signAndSend: async () => ({ transactionId: '' }),
   loading: false,
@@ -110,12 +110,14 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
   }, [universalAccount, userAddress, refreshDelegationStatus]);
 
   const refreshBalance = useCallback(async () => {
-    if (!universalAccount) return;
+    if (!universalAccount) return null;
     try {
       const assets = await universalAccount.getPrimaryAssets();
       setPrimaryAssets(assets);
+      return assets;
     } catch (err) {
       console.error('Failed to refresh balance:', err);
+      return null;
     }
   }, [universalAccount]);
 

@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/AuthProvider';
 import { useUniversalAccount } from '@/hooks/UniversalAccountProvider';
 import { usePayGram } from '@/hooks/PayGramProvider';
 import { shortenAddress, formatUsd } from '@/lib/constants';
-import { getUserRegistry } from '@/lib/parser';
+import { getChainBreakdown } from '@/lib/assets';
+import { listUsersApi } from '@/lib/api';
 import { tipLink, payLink, giftLink } from '@/lib/links';
 import { shareUrl } from '@/lib/telegram';
 
@@ -10,15 +12,22 @@ export function MePage() {
   const { walletAddress, telegramUser, logout } = useAuth();
   const { primaryAssets } = useUniversalAccount();
   const { gifts } = usePayGram();
+  const [friends, setFriends] = useState<Array<{ username: string; walletAddress: string }>>([]);
+
+  useEffect(() => {
+    void listUsersApi().then((users) => {
+      setFriends(
+        users
+          .filter((u) => u.username && u.username !== telegramUser?.username?.toLowerCase())
+          .map((u) => ({ username: u.username!, walletAddress: u.walletAddress })),
+      );
+    });
+  }, [telegramUser?.username]);
 
   const username = telegramUser?.username ?? walletAddress?.slice(2, 10) ?? 'me';
   const myTipLink = tipLink(username, 5);
   const myPayLink = payLink(username, 25);
-
-  const registry = getUserRegistry();
-  const friends = Object.entries(registry).filter(
-    ([h]) => h !== telegramUser?.username?.toLowerCase(),
-  );
+  const chains = getChainBreakdown(primaryAssets);
 
   const copy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -39,6 +48,18 @@ export function MePage() {
           {formatUsd(primaryAssets?.totalAmountInUSD ?? 0)}
         </p>
         <p className="text-xs text-text-muted mt-1">Unified balance · all chains</p>
+        {chains.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {chains.map((chain) => (
+              <span
+                key={chain.chainId}
+                className="text-xs px-2 py-1 rounded-full bg-surface-dark border border-surface-border text-text-secondary"
+              >
+                {chain.name} {formatUsd(chain.amountInUSD)}
+              </span>
+            ))}
+          </div>
+        )}
         {walletAddress && (
           <button
             type="button"
@@ -120,10 +141,10 @@ export function MePage() {
           <p className="text-text-muted text-sm">Friends appear when they open PayGram and log in.</p>
         ) : (
           <ul className="space-y-2">
-            {friends.map(([handle, addr]) => (
-              <li key={handle} className="flex justify-between items-center text-sm">
-                <span className="text-text-primary">@{handle}</span>
-                <span className="text-text-muted font-mono text-xs">{shortenAddress(addr)}</span>
+            {friends.map((friend) => (
+              <li key={friend.username} className="flex justify-between items-center text-sm">
+                <span className="text-text-primary">@{friend.username}</span>
+                <span className="text-text-muted font-mono text-xs">{shortenAddress(friend.walletAddress)}</span>
               </li>
             ))}
           </ul>

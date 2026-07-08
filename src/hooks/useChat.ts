@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { CHAIN_ID } from '@particle-network/universal-account-sdk';
 import type { Intent } from '@/lib/intents';
 import { parseIntent, resolveRecipient } from '@/lib/parser';
+import { formatChainBreakdown } from '@/lib/assets';
 import {
   type ChatMessage,
   type ConfirmPayload,
@@ -11,6 +12,7 @@ import {
 } from '@/lib/storage';
 import { USDC_ARBITRUM, formatUsd } from '@/lib/constants';
 import { giftLink } from '@/lib/links';
+import { fetchGiftApi } from '@/lib/api';
 import { haptic, shareUrl } from '@/lib/telegram';
 import { usePayGram, userHandle } from './PayGramProvider';
 import { useUniversalAccount } from './UniversalAccountProvider';
@@ -51,6 +53,13 @@ export function useChat() {
     [persist],
   );
 
+  const showConfirm = useCallback(
+    (confirm: ConfirmPayload, content: string) => {
+      append({ type: 'confirm', content, confirm });
+    },
+    [append],
+  );
+
   const executeSend = useCallback(
     async (amount: number, address: string) => {
       if (!universalAccount) throw new Error('Wallet not ready');
@@ -70,8 +79,13 @@ export function useChat() {
   const handleIntent = useCallback(
     async (intent: Intent, raw: string) => {
       if (intent.type === 'balance') {
-        await refreshBalance();
-        append({ type: 'balance', content: `Your balance is ${formatUsd(balance)}` });
+        const assets = await refreshBalance();
+        const total = assets?.totalAmountInUSD ?? balance;
+        const breakdown = formatChainBreakdown(assets);
+        append({
+          type: 'balance',
+          content: `Your balance is ${formatUsd(total)}${breakdown ? `\n${breakdown}` : ''}`,
+        });
         return;
       }
 
@@ -84,7 +98,7 @@ export function useChat() {
       }
 
       if (intent.type === 'request') {
-        paygram.createRequest(me, intent.from, intent.amount, intent.note);
+        await paygram.createRequest(me, intent.from, intent.amount, intent.note);
         append({
           type: 'receipt',
           content: `Request sent to ${intent.from} for ${formatUsd(intent.amount)}`,
@@ -94,35 +108,33 @@ export function useChat() {
       }
 
       if (intent.type === 'split') {
-        append({
-          type: 'confirm',
-          content: 'Confirm split',
-          confirm: {
+        showConfirm(
+          {
             intentType: 'split',
             amount: intent.total,
             recipients: intent.recipients,
             note: intent.note,
           },
-        });
+          'Confirm split',
+        );
         return;
       }
 
       if (intent.type === 'collect') {
-        append({
-          type: 'confirm',
-          content: 'Confirm collection',
-          confirm: {
+        showConfirm(
+          {
             intentType: 'collect',
             amount: intent.goal,
             title: intent.title,
           },
-        });
+          'Confirm collection',
+        );
         return;
       }
 
       if (intent.type === 'gift') {
         if (!walletAddress) return;
-        const gift = paygram.createGift(intent.amount, me, walletAddress);
+        const gift = await paygram.createGift(intent.amount, me, walletAddress);
         const link = giftLink(gift.id, gift.amount);
         append({
           type: 'receipt',
@@ -154,22 +166,21 @@ export function useChat() {
           append({ type: 'error', content: `Collection ${intent.potId} not found` });
           return;
         }
-        append({
-          type: 'confirm',
-          content: 'Confirm contribution',
-          confirm: {
+        showConfirm(
+          {
             intentType: 'contribute',
             amount: intent.amount,
             title: pot.id,
             recipient: pot.creator,
             note: pot.title,
           },
-        });
+          'Confirm contribution',
+        );
         return;
       }
 
       if (intent.type === 'send' || intent.type === 'tip') {
-        const address = resolveRecipient(intent.recipient);
+        const address = await resolveRecipient(intent.recipient);
         if (!address || address === '0x') {
           append({
             type: 'error',
@@ -177,20 +188,19 @@ export function useChat() {
           });
           return;
         }
-        append({
-          type: 'confirm',
-          content: `Confirm ${intent.type}`,
-          confirm: {
+        showConfirm(
+          {
             intentType: intent.type,
             amount: intent.amount,
             recipient: intent.recipient,
             note: intent.note,
             resolvedAddress: address,
           },
-        });
+          `Confirm ${intent.type}`,
+        );
       }
     },
-    [append, balance, me, paygram, refreshBalance, walletAddress],
+    [append, balance, me, paygram, refreshBalance, showConfirm, walletAddress],
   );
 
   const submitMessage = useCallback(
@@ -209,7 +219,7 @@ export function useChat() {
       setProcessing(true);
       try {
         if (confirm.intentType === 'split' && confirm.recipients) {
-          paygram.createSplit(me, confirm.amount, confirm.recipients, confirm.note);
+          await paygram.createSplit(me, confirm.amount, confirm.recipients, confirm.note);
           removeMessage(messageId);
           append({
             type: 'receipt',
@@ -221,7 +231,7 @@ export function useChat() {
         }
 
         if (confirm.intentType === 'collect' && confirm.title) {
-          const pot = paygram.createPot(confirm.title, confirm.amount, me);
+          const pot = await paygram.createPot(confirm.title, confirm.amount, me);
           removeMessage(messageId);
           append({
             type: 'receipt',
@@ -249,8 +259,7 @@ export function useChat() {
         removeMessage(messageId);
         haptic('success');
 
-        paygram.refresh();
-        const activityNote = confirm.note;
+        await paygram.refresh();
         append({
           type: 'receipt',
           content: `✅ ${confirm.intentType === 'tip' ? 'Tipped' : 'Sent'} ${formatUsd(confirm.amount)} to ${confirm.recipient}`,
@@ -258,7 +267,7 @@ export function useChat() {
             intentType: confirm.intentType,
             amount: confirm.amount,
             counterparty: confirm.recipient,
-            note: activityNote,
+            note: confirm.note,
             txId,
             status: 'confirmed',
           },
@@ -296,6 +305,73 @@ export function useChat() {
     setInput(prompts[action] ?? '');
   }, []);
 
+  const openPayDeepLink = useCallback(
+    async (amount: number, target: string) => {
+      const recipient = target.startsWith('@') ? target : `@${target}`;
+      const address = await resolveRecipient(recipient);
+      if (!address || address === '0x') {
+        append({
+          type: 'error',
+          content: `${recipient} isn't on PayGram yet. Ask them to open the app first.`,
+        });
+        return;
+      }
+      showConfirm(
+        {
+          intentType: 'send',
+          amount,
+          recipient,
+          resolvedAddress: address,
+        },
+        'Confirm payment',
+      );
+    },
+    [append, showConfirm],
+  );
+
+  const openGiftDeepLink = useCallback(
+    async (giftId: string) => {
+      const local = paygram.gifts.find((g) => g.id === giftId);
+      const gift = local ?? (await fetchGiftApi(giftId));
+      if (!gift || gift.claimed) {
+        append({ type: 'error', content: 'Gift link not found or already claimed.' });
+        return;
+      }
+      showConfirm(
+        {
+          intentType: 'send',
+          amount: gift.amount,
+          recipient: gift.creator,
+          resolvedAddress: gift.creatorAddress,
+          note: 'Gift',
+        },
+        'Claim gift',
+      );
+    },
+    [append, paygram.gifts, showConfirm],
+  );
+
+  const openPotDeepLink = useCallback(
+    (potId: string, amount = 10) => {
+      const pot = paygram.pots.find((p) => p.id === potId);
+      if (!pot) {
+        append({ type: 'error', content: `Collection ${potId} not found` });
+        return;
+      }
+      showConfirm(
+        {
+          intentType: 'contribute',
+          amount,
+          title: pot.id,
+          recipient: pot.creator,
+          note: pot.title,
+        },
+        'Confirm contribution',
+      );
+    },
+    [append, paygram.pots, showConfirm],
+  );
+
   return {
     messages,
     input,
@@ -308,5 +384,8 @@ export function useChat() {
     balance,
     quickActions: QUICK_ACTIONS,
     applyQuickAction,
+    openPayDeepLink,
+    openGiftDeepLink,
+    openPotDeepLink,
   };
 }

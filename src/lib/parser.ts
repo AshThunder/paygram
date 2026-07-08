@@ -183,12 +183,20 @@ export function parseIntent(input: string): Intent {
   return { type: 'unknown', raw: input };
 }
 
-export function resolveRecipient(recipient: string): string | null {
+export async function resolveRecipient(recipient: string): Promise<string | null> {
   if (isAddress(recipient)) return recipient;
 
   const handle = normalizeHandle(recipient);
   const registry = getUserRegistry();
-  return registry[handle] ?? (import.meta.env.VITE_DEMO_RECIPIENT_ADDRESS || null);
+  const local = registry[handle];
+  if (local) return local;
+
+  const { resolveUserApi } = await import('./api');
+  const remote = await resolveUserApi(handle);
+  if (remote) return remote;
+
+  const demo = import.meta.env.VITE_DEMO_RECIPIENT_ADDRESS;
+  return demo && demo !== '0x' ? demo : null;
 }
 
 export type UserRegistry = Record<string, string>;

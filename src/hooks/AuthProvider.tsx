@@ -2,12 +2,13 @@ import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, 
 import { useMagic } from './MagicProvider';
 import { getTelegramUser } from '@/lib/telegram';
 import { registerSelf } from '@/lib/parser';
+import { registerUserApi } from '@/lib/api';
 
 type AuthContextType = {
   walletAddress: string | null;
   isAuthenticated: boolean;
   isLoggingIn: boolean;
-  login: () => Promise<void>;
+  login: (email: string) => Promise<void>;
   logout: () => Promise<void>;
   telegramUser: ReturnType<typeof getTelegramUser>;
 };
@@ -43,6 +44,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setWalletAddress(addr);
             localStorage.setItem('paygram_wallet', addr);
             registerSelf(telegramUser?.username, addr);
+            await registerUserApi({
+              telegramId: telegramUser?.id,
+              username: telegramUser?.username,
+              displayName: telegramUser?.firstName,
+              walletAddress: addr,
+            });
           }
         }
       } catch {
@@ -50,20 +57,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
     checkSession();
-  }, [magic, telegramUser?.username]);
+  }, [magic, telegramUser]);
 
-  const login = useCallback(async () => {
+  const login = useCallback(async (email: string) => {
     if (!magic) throw new Error('Magic SDK not initialized');
+    if (!email.trim()) throw new Error('Email required');
 
     setIsLoggingIn(true);
     try {
-      const email = telegramUser?.username
-        ? `${telegramUser.username}@telegram.paygram.local`
-        : prompt('Enter email for login:');
-
-      if (!email) throw new Error('Email required');
-
-      await magic.auth.loginWithEmailOTP({ email });
+      await magic.auth.loginWithEmailOTP({ email: email.trim() });
 
       const info = await magic.user.getInfo();
       const addr = info.wallets?.ethereum?.publicAddress;
@@ -72,10 +74,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setWalletAddress(addr);
       localStorage.setItem('paygram_wallet', addr);
       registerSelf(telegramUser?.username, addr);
+      await registerUserApi({
+        telegramId: telegramUser?.id,
+        username: telegramUser?.username,
+        displayName: telegramUser?.firstName,
+        walletAddress: addr,
+      });
     } finally {
       setIsLoggingIn(false);
     }
-  }, [magic, telegramUser?.username]);
+  }, [magic, telegramUser]);
 
   const logout = useCallback(async () => {
     if (magic) {

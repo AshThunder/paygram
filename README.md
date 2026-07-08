@@ -146,7 +146,22 @@ docs/
 
 ```bash
 npm run build
-# Deploy dist/ to Vercel, Cloudflare Pages, etc.
+# Deploy dist/ + api/ to Vercel
+```
+
+### Vercel setup (Week 2)
+
+1. Import repo at [vercel.com](https://vercel.com) → connect `AshThunder/paygram`
+2. Add env vars from `.env.example` (Magic, Particle, Telegram, RPC)
+3. **Storage:** Vercel dashboard → Storage → create **KV** or **Upstash Redis** → adds `KV_REST_API_URL` + `KV_REST_API_TOKEN`
+4. Deploy — API routes at `/api/*` serve user registry, requests, pots, gifts
+5. Set `VITE_MINI_APP_URL` to your Vercel URL, redeploy
+
+### Local full-stack dev
+
+```bash
+npm run vercel:dev   # Mini App + API together (needs Vercel CLI)
+npm run dev          # Frontend only — API falls back to localStorage
 ```
 
 ---

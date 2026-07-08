@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from 'react';
@@ -21,6 +22,15 @@ import {
   uid,
 } from '@/lib/storage';
 import { resolveRecipient } from '@/lib/parser';
+import {
+  createGiftApi,
+  createPotApi,
+  createRequestApi,
+  fetchPotsApi,
+  fetchRequestsApi,
+  markRequestPaidApi,
+  updatePotCollectedApi,
+} from '@/lib/api';
 import { useUniversalAccount } from './UniversalAccountProvider';
 import { haptic } from '@/lib/telegram';
 
@@ -51,11 +61,11 @@ type PayGramContextType = {
   pots: CollectionPot[];
   activity: ActivityItem[];
   gifts: GiftLink[];
-  refresh: () => void;
-  createRequest: (from: string, to: string, amount: number, note?: string) => PaymentRequest;
-  createSplit: (creator: string, total: number, recipients: string[], note?: string) => PaymentRequest[];
-  createPot: (title: string, goal: number, creator: string) => CollectionPot;
-  createGift: (amount: number, creator: string, creatorAddress: string) => GiftLink;
+  refresh: () => Promise<void>;
+  createRequest: (from: string, to: string, amount: number, note?: string) => Promise<PaymentRequest>;
+  createSplit: (creator: string, total: number, recipients: string[], note?: string) => Promise<PaymentRequest[]>;
+  createPot: (title: string, goal: number, creator: string) => Promise<CollectionPot>;
+  createGift: (amount: number, creator: string, creatorAddress: string) => Promise<GiftLink>;
   payRequest: (requestId: string) => Promise<{ txId: string }>;
   contributeToPot: (potId: string, amount: number, contributor: string) => Promise<{ txId: string }>;
   remindRequest: (requestId: string) => void;
@@ -79,12 +89,27 @@ export function PayGramProvider({ children }: { children: ReactNode }) {
   const [activity, setActivity] = useState<ActivityItem[]>(() => loadActivity());
   const [gifts, setGifts] = useState<GiftLink[]>(() => loadGifts());
 
-  const refresh = useCallback(() => {
-    setRequests(loadRequests());
-    setPots(loadPots());
+  const refresh = useCallback(async () => {
+    const [remoteRequests, remotePots] = await Promise.all([fetchRequestsApi(), fetchPotsApi()]);
+    if (remoteRequests.length) {
+      saveRequests(remoteRequests);
+      setRequests(remoteRequests);
+    } else {
+      setRequests(loadRequests());
+    }
+    if (remotePots.length) {
+      savePots(remotePots);
+      setPots(remotePots);
+    } else {
+      setPots(loadPots());
+    }
     setActivity(loadActivity());
     setGifts(loadGifts());
   }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   const logActivity = useCallback((item: Omit<ActivityItem, 'id' | 'createdAt'>) => {
     const entry: ActivityItem = { ...item, id: uid(), createdAt: Date.now() };
@@ -110,8 +135,9 @@ export function PayGramProvider({ children }: { children: ReactNode }) {
     [universalAccount, ensureDelegated, signAndSend, refreshBalance],
   );
 
-  const createRequest = useCallback((from: string, to: string, amount: number, note?: string) => {
-    const req: PaymentRequest = {
+  const createRequest = useCallback(async (from: string, to: string, amount: number, note?: string) => {
+    const remote = await createRequestApi(from, to, amount, note);
+    const req: PaymentRequest = remote ?? {
       id: uid(),
       fromUser: from,
       toUser: to,
@@ -120,33 +146,27 @@ export function PayGramProvider({ children }: { children: ReactNode }) {
       status: 'pending',
       createdAt: Date.now(),
     };
-    const next = [req, ...loadRequests()];
+    const next = [req, ...loadRequests().filter((r) => r.id !== req.id)];
     saveRequests(next);
     setRequests(next);
     logActivity({ type: 'request', amount, counterparty: to, note, status: 'pending' });
     return req;
   }, [logActivity]);
 
-  const createSplit = useCallback((creator: string, total: number, recipients: string[], note?: string) => {
+  const createSplit = useCallback(async (creator: string, total: number, recipients: string[], note?: string) => {
     const perPerson = total / recipients.length;
-    const newReqs = recipients.map((r) => ({
-      id: uid(),
-      fromUser: creator,
-      toUser: r,
-      amount: perPerson,
-      note: note ?? 'Split bill',
-      status: 'pending' as const,
-      createdAt: Date.now(),
-    }));
-    const next = [...newReqs, ...loadRequests()];
-    saveRequests(next);
-    setRequests(next);
+    const newReqs: PaymentRequest[] = [];
+    for (const r of recipients) {
+      const req = await createRequest(creator, r, perPerson, note ?? 'Split bill');
+      newReqs.push(req);
+    }
     logActivity({ type: 'split', amount: total, counterparty: recipients.join(', '), note, status: 'pending' });
     return newReqs;
-  }, [logActivity]);
+  }, [createRequest, logActivity]);
 
-  const createPot = useCallback((title: string, goal: number, creator: string) => {
-    const pot: CollectionPot = {
+  const createPot = useCallback(async (title: string, goal: number, creator: string) => {
+    const remote = await createPotApi(title, goal, creator);
+    const pot: CollectionPot = remote ?? {
       id: `pot_${uid().slice(0, 8)}`,
       title,
       goal,
@@ -154,15 +174,16 @@ export function PayGramProvider({ children }: { children: ReactNode }) {
       creator,
       createdAt: Date.now(),
     };
-    const next = [pot, ...loadPots()];
+    const next = [pot, ...loadPots().filter((p) => p.id !== pot.id)];
     savePots(next);
     setPots(next);
     logActivity({ type: 'collect', amount: goal, note: title, status: 'pending' });
     return pot;
   }, [logActivity]);
 
-  const createGift = useCallback((amount: number, creator: string, creatorAddress: string) => {
-    const gift: GiftLink = {
+  const createGift = useCallback(async (amount: number, creator: string, creatorAddress: string) => {
+    const remote = await createGiftApi(amount, creator, creatorAddress);
+    const gift: GiftLink = remote ?? {
       id: uid().slice(0, 8),
       amount,
       creator,
@@ -170,19 +191,20 @@ export function PayGramProvider({ children }: { children: ReactNode }) {
       claimed: false,
       createdAt: Date.now(),
     };
-    const next = [gift, ...loadGifts()];
+    const next = [gift, ...loadGifts().filter((g) => g.id !== gift.id)];
     saveGifts(next);
     setGifts(next);
     logActivity({ type: 'gift', amount, status: 'pending' });
     return gift;
   }, [logActivity]);
 
-  const markRequestPaid = useCallback((requestId: string, txId?: string) => {
+  const markRequestPaid = useCallback(async (requestId: string, txId?: string) => {
     const next = loadRequests().map((r) =>
       r.id === requestId ? { ...r, status: 'paid' as const } : r,
     );
     saveRequests(next);
     setRequests(next);
+    await markRequestPaidApi(requestId);
     if (txId) {
       logActivity({
         type: 'request_paid',
@@ -197,12 +219,12 @@ export function PayGramProvider({ children }: { children: ReactNode }) {
     async (requestId: string) => {
       const req = loadRequests().find((r) => r.id === requestId);
       if (!req) throw new Error('Request not found');
-      const address = resolveRecipient(req.fromUser);
+      const address = await resolveRecipient(req.fromUser);
       if (!address || address === '0x') {
         throw new Error(`${req.fromUser} has no wallet on PayGram`);
       }
       const txId = await executeTransfer(req.amount, address);
-      markRequestPaid(requestId, txId);
+      await markRequestPaid(requestId, txId);
       haptic('success');
       return { txId };
     },
@@ -213,16 +235,18 @@ export function PayGramProvider({ children }: { children: ReactNode }) {
     async (potId: string, amount: number, _contributor: string) => {
       const pot = loadPots().find((p) => p.id === potId);
       if (!pot) throw new Error('Collection not found');
-      const address = resolveRecipient(pot.creator);
+      const address = await resolveRecipient(pot.creator);
       if (!address || address === '0x') {
         throw new Error(`Creator ${pot.creator} has no wallet`);
       }
       const txId = await executeTransfer(amount, address);
+      const collected = pot.collected + amount;
       const next = loadPots().map((p) =>
-        p.id === potId ? { ...p, collected: p.collected + amount } : p,
+        p.id === potId ? { ...p, collected } : p,
       );
       savePots(next);
       setPots(next);
+      await updatePotCollectedApi(potId, collected);
       logActivity({
         type: 'contribute',
         amount,

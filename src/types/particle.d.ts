@@ -6,9 +6,24 @@ declare module '@particle-network/universal-account-sdk' {
     [key: string]: number;
   };
 
+  export type IChainAggregation = {
+    token: { chainId: number; symbol?: string; name?: string };
+    amount: number;
+    amountInUSD: number;
+    rawAmount: number;
+  };
+
+  export type IAsset = {
+    tokenType: string;
+    price: number;
+    amount: number;
+    amountInUSD: number;
+    chainAggregation: IChainAggregation[];
+  };
+
   export type IAssetsResponse = {
     totalAmountInUSD: number;
-    [key: string]: unknown;
+    assets: IAsset[];
   };
 
   export class UniversalAccount {
