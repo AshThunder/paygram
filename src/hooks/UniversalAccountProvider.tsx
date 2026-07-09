@@ -93,7 +93,7 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
         },
         tradeConfig: {
           slippageBps: 100,
-          universalGas: false,
+          universalGas: true,
         },
       });
       setUniversalAccount(ua);

@@ -10,7 +10,7 @@ import {
   saveChatMessages,
   uid,
 } from '@/lib/storage';
-import { USDC_ARBITRUM, formatUsd } from '@/lib/constants';
+import { USDC_ARBITRUM, formatUsd, formatWalletError } from '@/lib/constants';
 import { giftLink } from '@/lib/links';
 import { fetchGiftApi } from '@/lib/api';
 import { haptic, shareUrl } from '@/lib/telegram';
@@ -277,7 +277,7 @@ export function useChat() {
         });
       } catch (err) {
         haptic('error');
-        append({ type: 'error', content: err instanceof Error ? err.message : 'Transaction failed' });
+        append({ type: 'error', content: formatWalletError(err) });
       } finally {
         setProcessing(false);
       }

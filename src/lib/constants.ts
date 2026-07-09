@@ -43,3 +43,18 @@ export function normalizeHandle(handle: string): string {
 export function universalXUrl(transactionId: string): string {
   return `https://universalx.app/activity/details?id=${transactionId}`;
 }
+
+/** Turn raw Magic / RPC errors into something users can act on. */
+export function formatWalletError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/insufficient funds/i.test(msg)) {
+    return 'Your wallet needs a tiny amount of ETH on Arbitrum for first-time setup (~$0.01). Send a little ETH to your address on Arbitrum (chain 42161), then try again.';
+  }
+  if (/Magic RPC Error/i.test(msg)) {
+    return formatWalletError(msg.replace(/^Magic RPC Error:\s*\[[^\]]+\]\s*/i, ''));
+  }
+  if (msg.length > 200) {
+    return msg.slice(0, 200) + '…';
+  }
+  return msg;
+}
