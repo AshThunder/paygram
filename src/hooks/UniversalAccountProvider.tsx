@@ -5,6 +5,7 @@ import {
 } from '@particle-network/universal-account-sdk';
 import { BrowserProvider, getBytes, Signature } from 'ethers';
 import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useAuth } from './AuthProvider';
 import { useMagic } from './MagicProvider';
 import { ARBITRUM_CHAIN_ID } from '@/lib/constants';
 
@@ -19,6 +20,8 @@ type UAContextType = {
   accountInfo: AccountInfo;
   primaryAssets: IAssetsResponse | null;
   isDelegated: boolean;
+  isWalletReady: boolean;
+  initError: string | null;
   refreshBalance: () => Promise<IAssetsResponse | null>;
   ensureDelegated: () => Promise<void>;
   signAndSend: (transaction: { rootHash: string; userOps?: unknown[] } & Record<string, unknown>) => Promise<{ transactionId: string }>;
@@ -30,6 +33,8 @@ const UAContext = createContext<UAContextType>({
   accountInfo: { ownerAddress: '', evmSmartAccount: '', solanaSmartAccount: '' },
   primaryAssets: null,
   isDelegated: false,
+  isWalletReady: false,
+  initError: null,
   refreshBalance: async () => ({} as IAssetsResponse),
   ensureDelegated: async () => {},
   signAndSend: async () => ({ transactionId: '' }),
@@ -38,8 +43,17 @@ const UAContext = createContext<UAContextType>({
 
 export const useUniversalAccount = () => useContext(UAContext);
 
+function particleConfig(): { projectId: string; projectClientKey: string; projectAppUuid: string } | null {
+  const projectId = import.meta.env.VITE_PROJECT_ID;
+  const projectClientKey = import.meta.env.VITE_CLIENT_KEY;
+  const projectAppUuid = import.meta.env.VITE_APP_ID;
+  if (!projectId || !projectClientKey || !projectAppUuid) return null;
+  return { projectId, projectClientKey, projectAppUuid };
+}
+
 export function UniversalAccountProvider({ children }: { children: ReactNode }) {
   const { magic } = useMagic();
+  const { walletAddress } = useAuth();
   const [universalAccount, setUniversalAccount] = useState<UniversalAccount | null>(null);
   const [accountInfo, setAccountInfo] = useState<AccountInfo>({
     ownerAddress: '',
@@ -49,33 +63,47 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
   const [primaryAssets, setPrimaryAssets] = useState<IAssetsResponse | null>(null);
   const [isDelegated, setIsDelegated] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  const userAddress = typeof window !== 'undefined' ? localStorage.getItem('paygram_wallet') : null;
+  const [initError, setInitError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!userAddress) {
+    if (!walletAddress || !magic) {
       setUniversalAccount(null);
+      setInitError(null);
       return;
     }
 
-    const ua = new UniversalAccount({
-      projectId: import.meta.env.VITE_PROJECT_ID,
-      projectClientKey: import.meta.env.VITE_CLIENT_KEY,
-      projectAppUuid: import.meta.env.VITE_APP_ID,
-      smartAccountOptions: {
-        useEIP7702: true,
-        name: 'UNIVERSAL',
-        version: UNIVERSAL_ACCOUNT_VERSION,
-        ownerAddress: userAddress,
-      },
-      tradeConfig: {
-        slippageBps: 100,
-        universalGas: false,
-      },
-    });
+    const config = particleConfig();
+    if (!config) {
+      setUniversalAccount(null);
+      setInitError('Particle credentials missing — check VITE_PROJECT_ID, VITE_CLIENT_KEY, VITE_APP_ID');
+      return;
+    }
 
-    setUniversalAccount(ua);
-  }, [userAddress]);
+    try {
+      const ua = new UniversalAccount({
+        projectId: config.projectId,
+        projectClientKey: config.projectClientKey,
+        projectAppUuid: config.projectAppUuid,
+        ownerAddress: walletAddress,
+        smartAccountOptions: {
+          useEIP7702: true,
+          name: 'UNIVERSAL',
+          version: UNIVERSAL_ACCOUNT_VERSION,
+          ownerAddress: walletAddress,
+        },
+        tradeConfig: {
+          slippageBps: 100,
+          universalGas: false,
+        },
+      });
+      setUniversalAccount(ua);
+      setInitError(null);
+    } catch (err) {
+      console.error('UniversalAccount init failed:', err);
+      setUniversalAccount(null);
+      setInitError(err instanceof Error ? err.message : 'Failed to initialize wallet');
+    }
+  }, [walletAddress, magic]);
 
   const refreshDelegationStatus = useCallback(async () => {
     if (!universalAccount) return;
@@ -85,14 +113,14 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
   }, [universalAccount]);
 
   useEffect(() => {
-    if (!universalAccount || !userAddress) return;
+    if (!universalAccount || !walletAddress) return;
 
     const fetchAccountData = async () => {
       setLoading(true);
       try {
         const options = await universalAccount.getSmartAccountOptions();
         setAccountInfo({
-          ownerAddress: userAddress,
+          ownerAddress: walletAddress,
           evmSmartAccount: options.smartAccountAddress || '',
           solanaSmartAccount: options.solanaSmartAccountAddress || '',
         });
@@ -101,13 +129,14 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
         setPrimaryAssets(assets);
       } catch (err) {
         console.error('Failed to fetch UA data:', err);
+        setInitError(err instanceof Error ? err.message : 'Failed to load wallet data');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchAccountData();
-  }, [universalAccount, userAddress, refreshDelegationStatus]);
+    void fetchAccountData();
+  }, [universalAccount, walletAddress, refreshDelegationStatus]);
 
   const refreshBalance = useCallback(async () => {
     if (!universalAccount) return null;
@@ -134,7 +163,7 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
   );
 
   const ensureDelegated = useCallback(async () => {
-    if (!universalAccount || !magic || !userAddress) {
+    if (!universalAccount || !magic || !walletAddress) {
       throw new Error('Universal Account or wallet not ready');
     }
 
@@ -151,17 +180,17 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
     const authorization = await signEip7702Auth(auth.address, ARBITRUM_CHAIN_ID, auth.nonce + 1);
 
     await magic.wallet.send7702Transaction({
-      to: userAddress,
+      to: walletAddress,
       data: '0x',
       authorizationList: [authorization],
     });
 
     await refreshDelegationStatus();
-  }, [universalAccount, magic, userAddress, signEip7702Auth, refreshDelegationStatus]);
+  }, [universalAccount, magic, walletAddress, signEip7702Auth, refreshDelegationStatus]);
 
   const signAndSend = useCallback(
     async (transaction: { rootHash: string; userOps?: unknown[] } & Record<string, unknown>) => {
-      if (!universalAccount || !magic || !userAddress) {
+      if (!universalAccount || !magic || !walletAddress) {
         throw new Error('Universal Account or wallet not ready');
       }
 
@@ -217,8 +246,10 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
       );
       return result;
     },
-    [universalAccount, magic, userAddress, signEip7702Auth],
+    [universalAccount, magic, walletAddress, signEip7702Auth],
   );
+
+  const isWalletReady = Boolean(universalAccount && magic && walletAddress && !loading && !initError);
 
   const value = useMemo(
     () => ({
@@ -226,12 +257,14 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
       accountInfo,
       primaryAssets,
       isDelegated,
+      isWalletReady,
+      initError,
       refreshBalance,
       ensureDelegated,
       signAndSend,
       loading,
     }),
-    [universalAccount, accountInfo, primaryAssets, isDelegated, refreshBalance, ensureDelegated, signAndSend, loading],
+    [universalAccount, accountInfo, primaryAssets, isDelegated, isWalletReady, initError, refreshBalance, ensureDelegated, signAndSend, loading],
   );
 
   return <UAContext.Provider value={value}>{children}</UAContext.Provider>;

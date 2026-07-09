@@ -37,26 +37,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!magic) return;
       try {
         const loggedIn = await magic.user.isLoggedIn();
-        if (loggedIn) {
-          const info = await magic.user.getInfo();
-          const addr = info.wallets?.ethereum?.publicAddress;
-          if (addr) {
-            setWalletAddress(addr);
-            localStorage.setItem('paygram_wallet', addr);
-            registerSelf(telegramUser?.username, addr);
-            await registerUserApi({
-              telegramId: telegramUser?.id,
-              username: telegramUser?.username,
-              displayName: telegramUser?.firstName,
-              walletAddress: addr,
-            });
-          }
+        if (!loggedIn) {
+          localStorage.removeItem('paygram_wallet');
+          setWalletAddress(null);
+          return;
+        }
+
+        const info = await magic.user.getInfo();
+        const addr = info.wallets?.ethereum?.publicAddress;
+        if (addr) {
+          setWalletAddress(addr);
+          localStorage.setItem('paygram_wallet', addr);
+          registerSelf(telegramUser?.username, addr);
+          await registerUserApi({
+            telegramId: telegramUser?.id,
+            username: telegramUser?.username,
+            displayName: telegramUser?.firstName,
+            walletAddress: addr,
+          });
         }
       } catch {
-        // no session
+        localStorage.removeItem('paygram_wallet');
+        setWalletAddress(null);
       }
     };
-    checkSession();
+    void checkSession();
   }, [magic, telegramUser]);
 
   const login = useCallback(async (email: string) => {

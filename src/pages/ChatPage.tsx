@@ -8,7 +8,7 @@ import { getStartParam } from '@/lib/telegram';
 import { parseStartParam } from '@/lib/links';
 
 export function ChatPage() {
-  const { loading, primaryAssets } = useUniversalAccount();
+  const { loading, primaryAssets, initError, isWalletReady } = useUniversalAccount();
   const chat = useChat();
   const handled = useRef(false);
 
@@ -34,6 +34,14 @@ export function ChatPage() {
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <BalanceHeader balance={chat.balance} assets={primaryAssets} loading={loading} />
+      {initError && (
+        <p className="mx-4 mb-2 text-xs text-danger bg-danger/10 border border-danger/20 rounded-lg px-3 py-2">
+          {initError}
+        </p>
+      )}
+      {!isWalletReady && !loading && !initError && (
+        <p className="mx-4 mb-2 text-xs text-text-muted">Setting up your wallet…</p>
+      )}
       <ChatThread
         messages={chat.messages}
         onConfirm={chat.confirmPayment}

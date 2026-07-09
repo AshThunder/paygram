@@ -21,7 +21,7 @@ import { useAuth } from './AuthProvider';
 const QUICK_ACTIONS = ['Send', 'Tip', 'Split', 'Request', 'Collect'] as const;
 
 export function useChat() {
-  const { universalAccount, primaryAssets, ensureDelegated, signAndSend, refreshBalance } =
+  const { universalAccount, primaryAssets, ensureDelegated, signAndSend, refreshBalance, isWalletReady, initError, loading } =
     useUniversalAccount();
   const { telegramUser, walletAddress } = useAuth();
   const paygram = usePayGram();
@@ -62,7 +62,11 @@ export function useChat() {
 
   const executeSend = useCallback(
     async (amount: number, address: string) => {
-      if (!universalAccount) throw new Error('Wallet not ready');
+      if (loading) throw new Error('Wallet still loading…');
+      if (initError) throw new Error(initError);
+      if (!isWalletReady || !universalAccount) {
+        throw new Error('Wallet not ready — close and reopen PayGram, then try again');
+      }
       await ensureDelegated();
       const transaction = await universalAccount.createTransferTransaction({
         token: { chainId: CHAIN_ID.ARBITRUM_MAINNET_ONE, address: USDC_ARBITRUM },
@@ -73,7 +77,7 @@ export function useChat() {
       await refreshBalance();
       return result.transactionId;
     },
-    [universalAccount, ensureDelegated, signAndSend, refreshBalance],
+    [universalAccount, isWalletReady, initError, loading, ensureDelegated, signAndSend, refreshBalance],
   );
 
   const handleIntent = useCallback(

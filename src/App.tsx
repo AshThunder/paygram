@@ -1,5 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/AuthProvider';
+import { PayGramProvider } from '@/hooks/PayGramProvider';
+import { UniversalAccountProvider } from '@/hooks/UniversalAccountProvider';
 import { LoginScreen } from '@/components/auth/LoginScreen';
 import { TabBar } from '@/components/ui/TabBar';
 import { ChatPage } from '@/pages/ChatPage';
@@ -35,5 +37,11 @@ export default function App() {
     return <LoginScreen />;
   }
 
-  return <AppShell />;
+  return (
+    <UniversalAccountProvider>
+      <PayGramProvider>
+        <AppShell />
+      </PayGramProvider>
+    </UniversalAccountProvider>
+  );
 }
