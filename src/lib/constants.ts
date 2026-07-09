@@ -1,5 +1,21 @@
 export const ARBITRUM_CHAIN_ID = 42161;
 
+/** Public Arbitrum RPC — used when VITE_ARB_RPC_URL is unset or still a placeholder. */
+export const ARBITRUM_RPC_FALLBACK = 'https://arbitrum-one.publicnode.com';
+
+export function getArbitrumRpcUrl(): string {
+  const configured = import.meta.env.VITE_ARB_RPC_URL?.trim();
+  if (
+    configured &&
+    !configured.includes('YOUR_KEY') &&
+    !configured.includes('your_') &&
+    configured.startsWith('http')
+  ) {
+    return configured;
+  }
+  return ARBITRUM_RPC_FALLBACK;
+}
+
 export const USDC_ARBITRUM = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
 
 export function formatUsd(amount: number | string): string {

@@ -1,7 +1,7 @@
 import { EVMExtension } from '@magic-ext/evm';
 import { Magic as MagicBase } from 'magic-sdk';
 import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { ARBITRUM_CHAIN_ID } from '@/lib/constants';
+import { ARBITRUM_CHAIN_ID, getArbitrumRpcUrl } from '@/lib/constants';
 
 export type MagicInstance = MagicBase<[EVMExtension]>;
 
@@ -20,7 +20,7 @@ export function MagicProvider({ children }: { children: ReactNode }) {
     const key = import.meta.env.VITE_MAGIC_API_KEY;
     if (!key) return;
 
-    const rpc = import.meta.env.VITE_ARB_RPC_URL || 'https://arb1.arbitrum.io/rpc';
+    const rpc = getArbitrumRpcUrl();
     const instance = new MagicBase(key, {
       extensions: [
         new EVMExtension([

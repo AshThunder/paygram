@@ -174,7 +174,12 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
       return;
     }
 
-    await magic.evm.switchChain(ARBITRUM_CHAIN_ID);
+    try {
+      await magic.evm.switchChain(ARBITRUM_CHAIN_ID);
+    } catch (err) {
+      // Default chain is already Arbitrum; switch can fail if RPC is slow in Telegram WebView
+      console.warn('switchChain:', err);
+    }
 
     const [auth] = await universalAccount.getEIP7702Auth([ARBITRUM_CHAIN_ID]);
     const authorization = await signEip7702Auth(auth.address, ARBITRUM_CHAIN_ID, auth.nonce + 1);
@@ -249,7 +254,7 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
     [universalAccount, magic, walletAddress, signEip7702Auth],
   );
 
-  const isWalletReady = Boolean(universalAccount && magic && walletAddress && !loading && !initError);
+  const isWalletReady = Boolean(universalAccount && magic && walletAddress && !initError);
 
   const value = useMemo(
     () => ({
