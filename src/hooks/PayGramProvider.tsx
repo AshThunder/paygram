@@ -28,6 +28,7 @@ import {
   createRequestApi,
   fetchPotsApi,
   fetchRequestsApi,
+  listUsersApi,
   markRequestPaidApi,
   updatePotCollectedApi,
 } from '@/lib/api';
@@ -90,7 +91,11 @@ export function PayGramProvider({ children }: { children: ReactNode }) {
   const [gifts, setGifts] = useState<GiftLink[]>(() => loadGifts());
 
   const refresh = useCallback(async () => {
-    const [remoteRequests, remotePots] = await Promise.all([fetchRequestsApi(), fetchPotsApi()]);
+    const [remoteRequests, remotePots] = await Promise.all([
+      fetchRequestsApi(),
+      fetchPotsApi(),
+      listUsersApi(),
+    ]);
     if (remoteRequests.length) {
       saveRequests(remoteRequests);
       setRequests(remoteRequests);

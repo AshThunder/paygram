@@ -154,7 +154,7 @@ npm run build
 1. Import repo at [vercel.com](https://vercel.com) → connect `AshThunder/paygram`
 2. Add env vars from `.env.example` (Magic, Particle, Telegram, RPC)
 3. **Storage (required for @username lookup):** Vercel dashboard → **Storage** → **Upstash Redis** → connect to `paygram` (adds `KV_REST_API_URL` + `KV_REST_API_TOKEN`)
-4. Deploy — API at `/api/registry` serves user registry, requests, pots, gifts
+4. Deploy — API at `/api/user-registry` serves user registry; `/api/requests`, `/api/pots`, `/api/gifts` for shared state
 5. Set `VITE_MINI_APP_URL` to your Vercel URL, redeploy
 
 **Live app:** https://paygram-rust.vercel.app  
