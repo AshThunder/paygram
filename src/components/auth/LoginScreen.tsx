@@ -2,10 +2,6 @@ import { useState } from 'react';
 import { useAuth } from '@/hooks/AuthProvider';
 import { useMagic } from '@/hooks/MagicProvider';
 
-function telegramLoginEmail(username: string): string {
-  return `${username}@telegram.paygram.local`;
-}
-
 export function LoginScreen() {
   const { login, isLoggingIn, telegramUser } = useAuth();
   const { magic } = useMagic();
@@ -59,7 +55,7 @@ export function LoginScreen() {
       <p className="text-text-muted text-sm text-center mb-6 max-w-xs">Type it. Tap confirm. Paid.</p>
 
       <div className="w-full max-w-xs space-y-4">
-        {inTelegram ? (
+        {inTelegram && (
           <div className="bg-surface-card border border-surface-border rounded-xl p-4 text-center">
             <p className="text-xs text-brand-muted font-semibold uppercase tracking-wider mb-1">Telegram</p>
             <p className="text-text-primary font-medium">
@@ -69,21 +65,26 @@ export function LoginScreen() {
               )}
             </p>
           </div>
-        ) : (
-          <label className="block">
-            <span className="text-xs text-text-muted font-medium uppercase tracking-wider mb-2 block">
-              Email
-            </span>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              autoComplete="email"
-              className="w-full h-12 px-4 bg-surface-card border border-surface-border rounded-xl text-text-primary placeholder:text-text-muted focus:outline-none focus:border-brand/50"
-            />
-          </label>
         )}
+
+        <label className="block">
+          <span className="text-xs text-text-muted font-medium uppercase tracking-wider mb-2 block">
+            Email
+          </span>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            autoComplete="email"
+            className="w-full h-12 px-4 bg-surface-card border border-surface-border rounded-xl text-text-primary placeholder:text-text-muted focus:outline-none focus:border-brand/50"
+          />
+          {inTelegram && (
+            <p className="text-text-muted text-xs mt-2">
+              Magic sends a one-time code to this email to create your wallet. Your Telegram @username is used for payments.
+            </p>
+          )}
+        </label>
 
         {error && (
           <p className="text-danger text-sm text-center bg-danger/10 border border-danger/20 rounded-lg px-3 py-2">
@@ -93,17 +94,11 @@ export function LoginScreen() {
 
         <button
           type="button"
-          onClick={() =>
-            handleLogin(
-              inTelegram && telegramUser?.username
-                ? telegramLoginEmail(telegramUser.username)
-                : email.trim(),
-            )
-          }
-          disabled={isLoggingIn || (!inTelegram && !email.trim())}
+          onClick={() => handleLogin(email.trim())}
+          disabled={isLoggingIn || !email.trim()}
           className="w-full h-12 bg-brand hover:bg-brand-light disabled:opacity-50 text-white font-semibold rounded-xl transition-colors"
         >
-          {isLoggingIn ? 'Connecting…' : inTelegram ? 'Continue' : 'Send login code'}
+          {isLoggingIn ? 'Connecting…' : 'Send login code'}
         </button>
       </div>
 
