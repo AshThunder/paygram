@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { usePayGram } from '@/hooks/PayGramProvider';
 import { useAuth } from '@/hooks/AuthProvider';
-import { formatUsd } from '@/lib/constants';
+import { formatUsd, formatWalletError } from '@/lib/constants';
 import { potLink } from '@/lib/links';
 import { shareUrl } from '@/lib/telegram';
 
@@ -10,6 +10,7 @@ export function CollectPage() {
   const { telegramUser } = useAuth();
   const [amount, setAmount] = useState('10');
   const [contributing, setContributing] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const me = telegramUser?.username ? `@${telegramUser.username}` : 'you';
 
@@ -17,10 +18,11 @@ export function CollectPage() {
     const val = parseFloat(amount);
     if (!val || val <= 0) return;
     setContributing(potId);
+    setError(null);
     try {
       await contributeToPot(potId, val, me);
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Failed');
+      setError(formatWalletError(e));
     } finally {
       setContributing(null);
     }
@@ -36,6 +38,10 @@ export function CollectPage() {
         </p>
       </div>
 
+      {error && (
+        <div className="mb-4 bg-danger/10 border border-danger/30 rounded-xl p-3 text-sm text-danger">{error}</div>
+      )}
+
       {pots.length === 0 ? (
         <div className="bg-surface-card border border-surface-border rounded-xl p-8 text-center">
           <p className="text-4xl mb-3">🎯</p>
@@ -47,6 +53,7 @@ export function CollectPage() {
           {pots.map((p) => {
             const pct = Math.min(100, (p.collected / p.goal) * 100);
             const link = potLink(p.id);
+            const leaders = [...(p.contributors ?? [])].sort((a, b) => b.amount - a.amount).slice(0, 5);
             return (
               <div key={p.id} className="bg-surface-card border border-surface-border rounded-xl p-4">
                 <div className="flex justify-between items-start mb-2">
@@ -54,7 +61,7 @@ export function CollectPage() {
                     <p className="text-base font-semibold text-text-primary">{p.title}</p>
                     <p className="text-xs text-text-muted">by {p.creator}</p>
                   </div>
-                  <span className="text-xs text-brand-muted font-mono">{p.id}</span>
+                  <span className="text-xs text-brand-muted font-mono">{Math.round(pct)}%</span>
                 </div>
 
                 <p className="text-2xl font-bold text-text-primary mb-1">
@@ -65,6 +72,22 @@ export function CollectPage() {
                 <div className="h-2 bg-surface-border rounded-full overflow-hidden mb-4">
                   <div className="h-full bg-brand rounded-full transition-all" style={{ width: `${pct}%` }} />
                 </div>
+
+                {leaders.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-xs text-brand-muted font-semibold uppercase tracking-wider mb-2">Top contributors</p>
+                    <div className="space-y-1">
+                      {leaders.map((c, i) => (
+                        <div key={c.user} className="flex justify-between text-xs">
+                          <span className="text-text-secondary">
+                            {i + 1}. {c.user}
+                          </span>
+                          <span className="text-text-primary font-medium">{formatUsd(c.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex gap-2 mb-3">
                   <input

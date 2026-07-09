@@ -17,6 +17,10 @@ export function potLink(potId: string): string {
   return `https://t.me/${BOT}?startapp=pot_${potId}`;
 }
 
+export function inviteLink(): string {
+  return `https://t.me/${BOT}`;
+}
+
 export function webPayLink(username: string, amount: number): string {
   return `${APP_URL}/?pay=${amount}&to=${username}`;
 }

@@ -36,6 +36,7 @@ declare module '@particle-network/universal-account-sdk' {
     getEIP7702Deployments(): Promise<Array<{ chainId: number; isDelegated?: boolean }>>;
     getEIP7702Auth(chainIds: number[]): Promise<Array<{ address: string; nonce: number }>>;
     createTransferTransaction(params: Record<string, unknown>): Promise<Record<string, unknown>>;
+    createSwapTransaction?(params: Record<string, unknown>): Promise<Record<string, unknown>>;
     sendTransaction(
       transaction: Record<string, unknown>,
       signature: string,

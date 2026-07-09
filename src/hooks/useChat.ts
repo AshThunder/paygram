@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { CHAIN_ID } from '@particle-network/universal-account-sdk';
 import type { Intent } from '@/lib/intents';
-import { parseIntent, resolveRecipient } from '@/lib/parser';
+import { parseIntentAsync, resolveRecipient } from '@/lib/parser';
 import { formatChainBreakdown } from '@/lib/assets';
 import {
   type ChatMessage,
@@ -11,17 +11,18 @@ import {
   uid,
 } from '@/lib/storage';
 import { USDC_ARBITRUM, formatUsd, formatWalletError } from '@/lib/constants';
-import { giftLink } from '@/lib/links';
-import { fetchGiftApi } from '@/lib/api';
-import { haptic, shareUrl } from '@/lib/telegram';
+import { giftLink, inviteLink } from '@/lib/links';
+import { fetchGiftApi, claimGiftApi } from '@/lib/api';
+import { addRecurringTip } from '@/lib/recurringTips';
+import { haptic, shareReceipt, isGroupChat, getTelegramChat } from '@/lib/telegram';
 import { usePayGram, userHandle } from './PayGramProvider';
 import { useUniversalAccount } from './UniversalAccountProvider';
 import { useAuth } from './AuthProvider';
 
-const QUICK_ACTIONS = ['Send', 'Tip', 'Split', 'Request', 'Collect'] as const;
+const QUICK_ACTIONS = ['Send', 'Tip', 'Split', 'Request', 'Collect', 'Swap'] as const;
 
 export function useChat() {
-  const { universalAccount, primaryAssets, ensureDelegated, signAndSend, refreshBalance, initError } =
+  const { universalAccount, primaryAssets, ensureDelegated, signAndSend, refreshBalance, initError, executeSwap } =
     useUniversalAccount();
   const { telegramUser, walletAddress } = useAuth();
   const paygram = usePayGram();
@@ -55,9 +56,13 @@ export function useChat() {
 
   const showConfirm = useCallback(
     (confirm: ConfirmPayload, content: string) => {
-      append({ type: 'confirm', content, confirm });
+      append({
+        type: 'confirm',
+        content,
+        confirm: { ...confirm, balanceBefore: balance },
+      });
     },
-    [append],
+    [append, balance],
   );
 
   const executeSend = useCallback(
@@ -95,7 +100,28 @@ export function useChat() {
       if (intent.type === 'unknown') {
         append({
           type: 'error',
-          content: `I didn't understand "${raw}". Try: send $25 to @alice, tip @bob $5, split $120 with @a @b, collect $500 for trip`,
+          content: `I didn't understand "${raw}". Try: send $25 to @alice, tip @bob $5, swap $50 to SOL, split $120 with @a @b`,
+        });
+        return;
+      }
+
+      if (intent.type === 'swap') {
+        showConfirm(
+          {
+            intentType: 'swap',
+            amount: intent.amount,
+            toToken: intent.toToken,
+          },
+          'Confirm swap',
+        );
+        return;
+      }
+
+      if (intent.type === 'recurring_tip') {
+        addRecurringTip(intent.recipient, intent.amount, intent.intervalDays);
+        append({
+          type: 'system',
+          content: `🔁 Weekly tip reminder set: ${formatUsd(intent.amount)} to ${intent.recipient}`,
         });
         return;
       }
@@ -152,7 +178,7 @@ export function useChat() {
           (r) => r.status === 'pending' && r.toUser.toLowerCase() === intent.target.toLowerCase(),
         );
         if (pending) {
-          paygram.remindRequest(pending.id);
+          await paygram.remindRequest(pending.id);
           append({
             type: 'system',
             content: `Reminder sent to ${intent.target} about ${formatUsd(pending.amount)}`,
@@ -187,7 +213,7 @@ export function useChat() {
         if (!address || address === '0x') {
           append({
             type: 'error',
-            content: `${intent.recipient} isn't on PayGram yet. They need to open the app first, or send to a 0x address.`,
+            content: `${intent.recipient} isn't on PayGram yet. Invite them to open the app first.`,
           });
           return;
         }
@@ -212,7 +238,7 @@ export function useChat() {
       if (!trimmed) return;
       append({ type: 'user', content: trimmed });
       setInput('');
-      await handleIntent(parseIntent(trimmed), trimmed);
+      await handleIntent(await parseIntentAsync(trimmed), trimmed);
     },
     [append, handleIntent],
   );
@@ -256,16 +282,52 @@ export function useChat() {
           return;
         }
 
-        if (!confirm.resolvedAddress) throw new Error('No recipient address');
+        if (confirm.intentType === 'swap' && confirm.toToken) {
+          const pendingReceipt = append({
+            type: 'receipt',
+            content: `⏳ Swapping ${formatUsd(confirm.amount)} to ${confirm.toToken}…`,
+            receipt: { intentType: 'swap', amount: confirm.amount, status: 'pending' },
+          });
+          const { transactionId: txId } = await executeSwap(confirm.amount, confirm.toToken);
+          removeMessage(messageId);
+          persist(
+            loadChatMessages().map((m) =>
+              m.id === pendingReceipt.id
+                ? {
+                    ...m,
+                    content: `✅ Swapped ${formatUsd(confirm.amount)} to ${confirm.toToken}`,
+                    receipt: {
+                      intentType: 'swap',
+                      amount: confirm.amount,
+                      txId,
+                      status: 'confirmed' as const,
+                      emoji: '✅',
+                    },
+                  }
+                : m,
+            ),
+          );
+          haptic('success');
+          return;
+        }
 
+        if (!confirm.resolvedAddress && confirm.intentType !== 'split' && confirm.intentType !== 'collect') {
+          throw new Error('No recipient address');
+        }
+
+        if (confirm.resolvedAddress) {
         const txId = await executeSend(confirm.amount, confirm.resolvedAddress);
         removeMessage(messageId);
         haptic('success');
 
+        if (confirm.note === 'Gift' && confirm.giftId) {
+          await claimGiftApi(confirm.giftId);
+        }
+
         await paygram.refresh();
         append({
           type: 'receipt',
-          content: `✅ ${confirm.intentType === 'tip' ? 'Tipped' : 'Sent'} ${formatUsd(confirm.amount)} to ${confirm.recipient}`,
+          content: `✅ ${confirm.intentType === 'tip' ? 'Tipped' : confirm.note === 'Gift' ? 'Claimed gift' : 'Sent'} ${formatUsd(confirm.amount)} to ${confirm.recipient}`,
           receipt: {
             intentType: confirm.intentType,
             amount: confirm.amount,
@@ -273,8 +335,10 @@ export function useChat() {
             note: confirm.note,
             txId,
             status: 'confirmed',
+            emoji: '✅',
           },
         });
+        }
       } catch (err) {
         haptic('error');
         append({ type: 'error', content: formatWalletError(err) });
@@ -282,7 +346,7 @@ export function useChat() {
         setProcessing(false);
       }
     },
-    [append, executeSend, me, paygram, removeMessage],
+    [append, executeSend, executeSwap, me, paygram, persist, removeMessage],
   );
 
   const cancelConfirm = useCallback(
@@ -293,8 +357,12 @@ export function useChat() {
     [append, removeMessage],
   );
 
-  const shareReceipt = useCallback((text: string) => {
-    shareUrl(window.location.origin, text);
+  const shareReceiptMsg = useCallback((text: string, emoji = '✅') => {
+    shareReceipt(text, emoji);
+  }, []);
+
+  const inviteFriend = useCallback(() => {
+    shareReceipt(`Join me on PayGram — pay friends with @username in Telegram! ${inviteLink()}`, '💸');
   }, []);
 
   const applyQuickAction = useCallback((action: string) => {
@@ -304,6 +372,7 @@ export function useChat() {
       Split: 'split $120 with @bob @carol @dave',
       Request: 'request $30 from @bob',
       Collect: 'collect $500 for ',
+      Swap: 'swap $50 to SOL',
     };
     setInput(prompts[action] ?? '');
   }, []);
@@ -347,6 +416,7 @@ export function useChat() {
           recipient: gift.creator,
           resolvedAddress: gift.creatorAddress,
           note: 'Gift',
+          giftId: gift.id,
         },
         'Claim gift',
       );
@@ -382,7 +452,11 @@ export function useChat() {
     submitMessage,
     confirmPayment,
     cancelConfirm,
-    shareReceipt,
+    shareReceipt: shareReceiptMsg,
+    inviteFriend,
+    groupHint: isGroupChat()
+      ? `Opened from ${getTelegramChat()?.title ?? 'group'} — use @username in splits`
+      : null,
     processing,
     balance,
     quickActions: QUICK_ACTIONS,

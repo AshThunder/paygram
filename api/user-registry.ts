@@ -34,6 +34,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const user: PayGramUser = {
         id: existing?.id ?? String(telegramId ?? walletAddress.slice(2, 10)),
+        telegramId: telegramId ? String(telegramId) : existing?.telegramId,
         username: handle,
         displayName: displayName ? String(displayName) : handle ?? 'PayGram User',
         walletAddress,

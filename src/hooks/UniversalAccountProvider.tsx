@@ -1,6 +1,7 @@
 import {
   UniversalAccount,
   UNIVERSAL_ACCOUNT_VERSION,
+  CHAIN_ID,
   type IAssetsResponse,
 } from '@particle-network/universal-account-sdk';
 import { BrowserProvider, getBytes, Signature } from 'ethers';
@@ -25,6 +26,7 @@ type UAContextType = {
   refreshBalance: () => Promise<IAssetsResponse | null>;
   ensureDelegated: () => Promise<void>;
   signAndSend: (transaction: { rootHash: string; userOps?: unknown[] } & Record<string, unknown>) => Promise<{ transactionId: string }>;
+  executeSwap: (amount: number, toToken: string) => Promise<{ transactionId: string }>;
   loading: boolean;
 };
 
@@ -38,6 +40,7 @@ const UAContext = createContext<UAContextType>({
   refreshBalance: async () => ({} as IAssetsResponse),
   ensureDelegated: async () => {},
   signAndSend: async () => ({ transactionId: '' }),
+  executeSwap: async () => ({ transactionId: '' }),
   loading: false,
 });
 
@@ -254,6 +257,29 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
     [universalAccount, magic, walletAddress, signEip7702Auth],
   );
 
+  const executeSwap = useCallback(
+    async (amount: number, toToken: string) => {
+      if (!universalAccount || !magic || !walletAddress) {
+        throw new Error('Universal Account or wallet not ready');
+      }
+      await ensureDelegated();
+      const createSwap = universalAccount.createSwapTransaction;
+      if (!createSwap) {
+        throw new Error('Swap not supported in this UA SDK version');
+      }
+      const tokenType = toToken.toUpperCase() === 'SOL' ? 'SOL' : toToken.toUpperCase();
+      const transaction = await createSwap.call(universalAccount, {
+        expectToken: { type: tokenType, chainId: CHAIN_ID.SOLANA_MAINNET },
+        amount: String(amount),
+        slippageBps: 100,
+      });
+      const result = await signAndSend(transaction as { rootHash: string; userOps?: unknown[] });
+      await refreshBalance();
+      return result;
+    },
+    [universalAccount, magic, walletAddress, ensureDelegated, signAndSend, refreshBalance],
+  );
+
   const isWalletReady = Boolean(universalAccount && magic && walletAddress && !initError);
 
   const value = useMemo(
@@ -267,9 +293,10 @@ export function UniversalAccountProvider({ children }: { children: ReactNode }) 
       refreshBalance,
       ensureDelegated,
       signAndSend,
+      executeSwap,
       loading,
     }),
-    [universalAccount, accountInfo, primaryAssets, isDelegated, isWalletReady, initError, refreshBalance, ensureDelegated, signAndSend, loading],
+    [universalAccount, accountInfo, primaryAssets, isDelegated, isWalletReady, initError, refreshBalance, ensureDelegated, signAndSend, executeSwap, loading],
   );
 
   return <UAContext.Provider value={value}>{children}</UAContext.Provider>;

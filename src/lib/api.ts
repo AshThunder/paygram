@@ -152,3 +152,28 @@ export async function claimGiftApi(id: string): Promise<void> {
     body: JSON.stringify({ id }),
   });
 }
+
+export async function sendRemindApi(payload: {
+  targetUsername: string;
+  amount?: number;
+  fromUser?: string;
+  note?: string;
+}): Promise<boolean> {
+  const result = await apiFetch<{ ok: boolean }>('/api/remind', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return Boolean(result?.ok);
+}
+
+export async function addPotContributorApi(
+  potId: string,
+  user: string,
+  amount: number,
+  collected: number,
+): Promise<void> {
+  await apiFetch('/api/pots', {
+    method: 'PATCH',
+    body: JSON.stringify({ id: potId, collected, contributor: { user, amount } }),
+  });
+}

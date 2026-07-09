@@ -56,6 +56,19 @@ export const remindIntentSchema = z.object({
   amount: z.number().positive().optional(),
 });
 
+export const recurringTipIntentSchema = z.object({
+  type: z.literal('recurring_tip'),
+  amount: z.number().positive(),
+  recipient: z.string().min(1),
+  intervalDays: z.number().positive().default(7),
+});
+
+export const swapIntentSchema = z.object({
+  type: z.literal('swap'),
+  amount: z.number().positive(),
+  toToken: z.string().min(1),
+});
+
 export const unknownIntentSchema = z.object({
   type: z.literal('unknown'),
   raw: z.string(),
@@ -71,6 +84,8 @@ export const intentSchema = z.discriminatedUnion('type', [
   balanceIntentSchema,
   giftIntentSchema,
   remindIntentSchema,
+  recurringTipIntentSchema,
+  swapIntentSchema,
   unknownIntentSchema,
 ]);
 
@@ -82,3 +97,5 @@ export type SplitIntent = z.infer<typeof splitIntentSchema>;
 export type CollectIntent = z.infer<typeof collectIntentSchema>;
 export type GiftIntent = z.infer<typeof giftIntentSchema>;
 export type RemindIntent = z.infer<typeof remindIntentSchema>;
+export type RecurringTipIntent = z.infer<typeof recurringTipIntentSchema>;
+export type SwapIntent = z.infer<typeof swapIntentSchema>;

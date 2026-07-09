@@ -1,5 +1,6 @@
 export type PayGramUser = {
   id: string;
+  telegramId?: string;
   username: string | null;
   displayName: string;
   walletAddress: string;
@@ -16,12 +17,18 @@ export type PaymentRequest = {
   createdAt: number;
 };
 
+export type PotContributor = {
+  user: string;
+  amount: number;
+};
+
 export type CollectionPot = {
   id: string;
   title: string;
   goal: number;
   collected: number;
   creator: string;
+  contributors?: PotContributor[];
   createdAt: number;
 };
 

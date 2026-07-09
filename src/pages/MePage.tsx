@@ -7,6 +7,7 @@ import { getChainBreakdown } from '@/lib/assets';
 import { listUsersApi } from '@/lib/api';
 import { tipLink, payLink, giftLink } from '@/lib/links';
 import { shareUrl } from '@/lib/telegram';
+import { loadRecurringTips } from '@/lib/recurringTips';
 
 export function MePage() {
   const { walletAddress, telegramUser, logout } = useAuth();
@@ -28,6 +29,7 @@ export function MePage() {
   const myTipLink = tipLink(username, 5);
   const myPayLink = payLink(username, 25);
   const chains = getChainBreakdown(primaryAssets);
+  const recurring = loadRecurringTips();
 
   const copy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -132,6 +134,23 @@ export function MePage() {
         </section>
       )}
 
+      {/* Recurring tips */}
+      {recurring.length > 0 && (
+        <section className="bg-surface-card border border-surface-border rounded-xl p-4">
+          <h2 className="text-xs font-semibold text-brand-muted uppercase tracking-wider mb-3">
+            Recurring tips
+          </h2>
+          <ul className="space-y-2 text-sm">
+            {recurring.map((t) => (
+              <li key={t.id} className="flex justify-between text-text-secondary">
+                <span>{formatUsd(t.amount)} → {t.recipient}</span>
+                <span className="text-xs text-text-muted">every {t.intervalDays}d</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {/* Friends */}
       <section className="bg-surface-card border border-surface-border rounded-xl p-4">
         <h2 className="text-xs font-semibold text-brand-muted uppercase tracking-wider mb-3">
@@ -161,8 +180,17 @@ export function MePage() {
           <li>split $120 with @a @b @c</li>
           <li>collect $500 for Bali trip</li>
           <li>create gift $20</li>
+          <li>swap $50 to SOL</li>
+          <li>tip @creator $5 weekly</li>
           <li>remind @bob about $30</li>
         </ul>
+      </section>
+
+      <section className="bg-surface-card border border-surface-border rounded-xl p-4">
+        <h2 className="text-xs font-semibold text-brand-muted uppercase tracking-wider mb-2">Session keys</h2>
+        <p className="text-xs text-text-muted">
+          After your first EIP-7702 delegation, Magic signs transactions in-app. Fewer prompts, same self-custody.
+        </p>
       </section>
 
       <button

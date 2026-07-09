@@ -38,13 +38,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === 'PATCH') {
-    const { id, collected } = req.body ?? {};
+    const { id, collected, contributor } = req.body ?? {};
     if (!id) return res.status(400).json({ error: 'id required' });
 
     const pots = (await storeGet<CollectionPot[]>(KEYS.pots)) ?? [];
-    const next = pots.map((p) =>
-      p.id === id ? { ...p, collected: Number(collected ?? p.collected) } : p,
-    );
+    const next = pots.map((p) => {
+      if (p.id !== id) return p;
+      const contributors = [...(p.contributors ?? [])];
+      if (contributor?.user && contributor?.amount) {
+        const existing = contributors.find((c) => c.user === contributor.user);
+        if (existing) existing.amount += Number(contributor.amount);
+        else contributors.push({ user: String(contributor.user), amount: Number(contributor.amount) });
+      }
+      return {
+        ...p,
+        collected: Number(collected ?? p.collected),
+        contributors: contributors.sort((a, b) => b.amount - a.amount),
+      };
+    });
     await storeSet(KEYS.pots, next);
     const updated = next.find((p) => p.id === id);
     return res.status(200).json({ pot: updated });

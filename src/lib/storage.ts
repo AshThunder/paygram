@@ -7,14 +7,17 @@ export type ChatMessageType =
   | 'balance';
 
 export type ConfirmPayload = {
-  intentType: 'send' | 'tip' | 'request' | 'split' | 'collect' | 'contribute' | 'gift';
+  intentType: 'send' | 'tip' | 'request' | 'split' | 'collect' | 'contribute' | 'gift' | 'swap';
   amount: number;
   recipient?: string;
   recipients?: string[];
   from?: string;
   title?: string;
   note?: string;
+  giftId?: string;
   resolvedAddress?: string;
+  balanceBefore?: number;
+  toToken?: string;
 };
 
 export type ReceiptPayload = {
@@ -24,6 +27,7 @@ export type ReceiptPayload = {
   note?: string;
   txId?: string;
   status: 'confirmed' | 'failed' | 'pending';
+  emoji?: string;
 };
 
 export type ChatMessage = {
@@ -45,12 +49,18 @@ export type PaymentRequest = {
   createdAt: number;
 };
 
+export type PotContributor = {
+  user: string;
+  amount: number;
+};
+
 export type CollectionPot = {
   id: string;
   title: string;
   goal: number;
   collected: number;
   creator: string;
+  contributors?: PotContributor[];
   createdAt: number;
 };
 

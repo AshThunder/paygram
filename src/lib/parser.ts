@@ -180,7 +180,52 @@ export function parseIntent(input: string): Intent {
     }
   }
 
+  if (/^swap\b/i.test(lower)) {
+    const { amount, rest } = extractAmount(lower);
+    const toMatch = rest.match(/\bto\s+([A-Za-z0-9]+)/i);
+    if (amount && toMatch) {
+      return intentSchema.parse({ type: 'swap', amount, toToken: toMatch[1].toUpperCase() });
+    }
+  }
+
+  if (/^tip\b.+\bweekly\b/i.test(lower) || /^recurring\s+tip\b/i.test(lower)) {
+    const { amount, rest } = extractAmount(lower);
+    const handles = extractHandles(rest);
+    if (amount && handles[0]) {
+      return intentSchema.parse({
+        type: 'recurring_tip',
+        amount,
+        recipient: handles[0],
+        intervalDays: 7,
+      });
+    }
+  }
+
   return { type: 'unknown', raw: input };
+}
+
+export async function parseIntentAsync(input: string): Promise<Intent> {
+  const heuristic = parseIntent(input);
+  if (heuristic.type !== 'unknown') return heuristic;
+
+  try {
+    const res = await fetch(`${import.meta.env.VITE_API_URL ?? ''}/api/parse-intent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: input }),
+    });
+    if (!res.ok) return heuristic;
+    const data = (await res.json()) as { intent?: Record<string, unknown> };
+    if (!data.intent?.type) return heuristic;
+    return intentSchema.parse(data.intent);
+  } catch {
+    return heuristic;
+  }
+}
+
+export function inviteBotLink(): string {
+  const bot = import.meta.env.VITE_BOT_USERNAME || 'paygram_bbot';
+  return `https://t.me/${bot}`;
 }
 
 export async function resolveRecipient(recipient: string): Promise<string | null> {

@@ -30,6 +30,8 @@ import {
   fetchRequestsApi,
   listUsersApi,
   markRequestPaidApi,
+  sendRemindApi,
+  addPotContributorApi,
   updatePotCollectedApi,
 } from '@/lib/api';
 import { useUniversalAccount } from './UniversalAccountProvider';
@@ -68,8 +70,9 @@ type PayGramContextType = {
   createPot: (title: string, goal: number, creator: string) => Promise<CollectionPot>;
   createGift: (amount: number, creator: string, creatorAddress: string) => Promise<GiftLink>;
   payRequest: (requestId: string) => Promise<{ txId: string }>;
+  payAllPending: (forUser: string) => Promise<{ paid: number; txIds: string[] }>;
   contributeToPot: (potId: string, amount: number, contributor: string) => Promise<{ txId: string }>;
-  remindRequest: (requestId: string) => void;
+  remindRequest: (requestId: string) => Promise<void>;
   markRequestPaid: (requestId: string, txId?: string) => void;
   getPendingForUser: (username?: string) => PaymentRequest[];
 };
@@ -237,7 +240,7 @@ export function PayGramProvider({ children }: { children: ReactNode }) {
   );
 
   const contributeToPot = useCallback(
-    async (potId: string, amount: number, _contributor: string) => {
+    async (potId: string, amount: number, contributor: string) => {
       const pot = loadPots().find((p) => p.id === potId);
       if (!pot) throw new Error('Collection not found');
       const address = await resolveRecipient(pot.creator);
@@ -246,12 +249,19 @@ export function PayGramProvider({ children }: { children: ReactNode }) {
       }
       const txId = await executeTransfer(amount, address);
       const collected = pot.collected + amount;
+      const contributors = [...(pot.contributors ?? [])];
+      const existing = contributors.find((c) => c.user === contributor);
+      if (existing) existing.amount += amount;
+      else contributors.push({ user: contributor, amount });
+      contributors.sort((a, b) => b.amount - a.amount);
+
       const next = loadPots().map((p) =>
-        p.id === potId ? { ...p, collected } : p,
+        p.id === potId ? { ...p, collected, contributors } : p,
       );
       savePots(next);
       setPots(next);
       await updatePotCollectedApi(potId, collected);
+      await addPotContributorApi(potId, contributor, amount, collected);
       logActivity({
         type: 'contribute',
         amount,
@@ -266,18 +276,40 @@ export function PayGramProvider({ children }: { children: ReactNode }) {
     [executeTransfer, logActivity],
   );
 
-  const remindRequest = useCallback((requestId: string) => {
+  const remindRequest = useCallback(async (requestId: string) => {
     const req = loadRequests().find((r) => r.id === requestId);
     if (!req) return;
+    const sent = await sendRemindApi({
+      targetUsername: req.toUser,
+      amount: req.amount,
+      fromUser: req.fromUser,
+      note: req.note,
+    });
     logActivity({
       type: 'remind',
       amount: req.amount,
       counterparty: req.toUser,
-      note: `Reminder sent to ${req.toUser}`,
-      status: 'pending',
+      note: sent ? `Telegram reminder sent to ${req.toUser}` : `Reminder logged for ${req.toUser}`,
+      status: sent ? 'confirmed' : 'pending',
     });
     haptic('light');
   }, [logActivity]);
+
+  const payAllPending = useCallback(
+    async (forUser: string) => {
+      const handle = forUser.startsWith('@') ? forUser : `@${forUser}`;
+      const pending = loadRequests().filter(
+        (r) => r.status === 'pending' && r.toUser.toLowerCase() === handle.toLowerCase(),
+      );
+      const txIds: string[] = [];
+      for (const req of pending) {
+        const { txId } = await payRequest(req.id);
+        txIds.push(txId);
+      }
+      return { paid: txIds.length, txIds };
+    },
+    [payRequest],
+  );
 
   const getPendingForUser = useCallback(
     (username?: string) => {
@@ -300,6 +332,7 @@ export function PayGramProvider({ children }: { children: ReactNode }) {
       createPot,
       createGift,
       payRequest,
+      payAllPending,
       contributeToPot,
       remindRequest,
       markRequestPaid,
@@ -316,6 +349,7 @@ export function PayGramProvider({ children }: { children: ReactNode }) {
       createPot,
       createGift,
       payRequest,
+      payAllPending,
       contributeToPot,
       remindRequest,
       markRequestPaid,

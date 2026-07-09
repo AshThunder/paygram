@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { BalanceHeader } from '@/components/balance/BalanceHeader';
+import { BalanceSkeleton } from '@/components/ui/Skeleton';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { ChatThread } from '@/components/chat/ChatThread';
 import { useChat } from '@/hooks/useChat';
@@ -33,7 +34,11 @@ export function ChatPage() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <BalanceHeader balance={chat.balance} assets={primaryAssets} loading={loading} />
+      {loading && !primaryAssets ? (
+        <BalanceSkeleton />
+      ) : (
+        <BalanceHeader balance={chat.balance} assets={primaryAssets} loading={loading} />
+      )}
       {initError && (
         <p className="mx-4 mb-2 text-xs text-danger bg-danger/10 border border-danger/20 rounded-lg px-3 py-2">
           {initError}
@@ -47,6 +52,7 @@ export function ChatPage() {
         onConfirm={chat.confirmPayment}
         onCancel={chat.cancelConfirm}
         onShare={chat.shareReceipt}
+        onInvite={chat.inviteFriend}
         processing={chat.processing}
       />
       <ChatInput
@@ -56,6 +62,7 @@ export function ChatPage() {
         quickActions={chat.quickActions}
         onQuickAction={chat.applyQuickAction}
         disabled={chat.processing}
+        groupHint={chat.groupHint}
       />
     </div>
   );

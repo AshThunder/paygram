@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/AuthProvider';
 import { PayGramProvider } from '@/hooks/PayGramProvider';
 import { UniversalAccountProvider } from '@/hooks/UniversalAccountProvider';
 import { LoginScreen } from '@/components/auth/LoginScreen';
+import { OnboardingModal, hasCompletedOnboarding } from '@/components/onboarding/OnboardingModal';
 import { TabBar } from '@/components/ui/TabBar';
 import { ChatPage } from '@/pages/ChatPage';
 import { ActivityPage } from '@/pages/ActivityPage';
@@ -32,16 +34,22 @@ function AppShell() {
 
 export default function App() {
   const { isAuthenticated } = useAuth();
+  const [showOnboarding, setShowOnboarding] = useState(
+    () => isAuthenticated && !hasCompletedOnboarding(),
+  );
 
   if (!isAuthenticated) {
     return <LoginScreen />;
   }
 
   return (
-    <UniversalAccountProvider>
-      <PayGramProvider>
-        <AppShell />
-      </PayGramProvider>
-    </UniversalAccountProvider>
+    <>
+      {showOnboarding && <OnboardingModal onDone={() => setShowOnboarding(false)} />}
+      <UniversalAccountProvider>
+        <PayGramProvider>
+          <AppShell />
+        </PayGramProvider>
+      </UniversalAccountProvider>
+    </>
   );
 }
