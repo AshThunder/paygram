@@ -8,6 +8,12 @@ PayGram is a Telegram Mini App for the [UXmaxx Hackathon](https://www.encodeclub
 
 **Live:** https://paygram-rust.vercel.app · **Bot:** [@paygram_bbot](https://t.me/paygram_bbot)
 
+<p align="center">
+  <img src="./public/paygram-screens-collage.png" alt="PayGram screens: Home, Chat, Activity, Me" width="720" />
+</p>
+
+<p align="center"><em>Home · Chat confirm · Activity history · Me</em></p>
+
 ---
 
 ## What PayGram is
