@@ -6,7 +6,7 @@ PayGram is a Telegram Mini App for the [UXmaxx Hackathon](https://www.encodeclub
 
 **Stack:** Vite + React · Magic (embedded wallet) · Particle Universal Accounts (EIP-7702) · Arbitrum · custom USDC escrows
 
-**Live:** [https://paygram-rust.vercel.app](https://paygram-rust.vercel.app) · **Telegram Bot (mini app):** [@paygram_bbot](https://t.me/paygram_bbot)
+**Telegram Bot (mini app):** [@paygram_bbot](https://t.me/paygram_bbot)  · **Live:** [https://paygram-rust.vercel.app](https://paygram-rust.vercel.app) · 
 
 <p align="center">
   <img src="./public/paygram-screens-collage.png" alt="PayGram screens: Home, Chat, Activity, Me" width="900" />
