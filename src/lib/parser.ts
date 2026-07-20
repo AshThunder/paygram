@@ -147,12 +147,6 @@ export function parseIntent(input: string): Intent {
     }
   }
 
-  if (/^(create\s+)?gift\b/i.test(lower)) {
-    const { amount } = extractAmount(lower);
-    if (amount) {
-      return intentSchema.parse({ type: 'gift', amount });
-    }
-  }
 
   if (/^remind\b/i.test(lower)) {
     const { amount, rest } = extractAmount(lower);
@@ -240,8 +234,12 @@ export async function resolveRecipient(recipient: string): Promise<string | null
   const remote = await resolveUserApi(handle);
   if (remote) return remote;
 
-  const demo = import.meta.env.VITE_DEMO_RECIPIENT_ADDRESS;
-  return demo && demo !== '0x' ? demo : null;
+  // Dev-only fallback — never silently send to a demo wallet in production.
+  if (import.meta.env.DEV) {
+    const demo = import.meta.env.VITE_DEMO_RECIPIENT_ADDRESS;
+    if (demo && demo !== '0x' && isAddress(demo)) return demo;
+  }
+  return null;
 }
 
 export type UserRegistry = Record<string, string>;

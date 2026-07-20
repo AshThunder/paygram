@@ -17,7 +17,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === 'POST') {
-    const { title, goal, creator } = req.body ?? {};
+    const { title, goal, creator, onChainId, chainId, beneficiaryAddress, creatorAddress } = req.body ?? {};
     if (!title || !goal || !creator) {
       return res.status(400).json({ error: 'title, goal, creator required' });
     }
@@ -28,6 +28,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       goal: Number(goal),
       collected: 0,
       creator: String(creator),
+      onChainId: onChainId != null ? Number(onChainId) : null,
+      chainId: chainId != null ? Number(chainId) : null,
+      beneficiaryAddress: beneficiaryAddress ? String(beneficiaryAddress) : null,
+      creatorAddress: creatorAddress ? String(creatorAddress) : null,
+      released: false,
+      cancelled: false,
       createdAt: Date.now(),
     };
 
@@ -38,7 +44,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === 'PATCH') {
-    const { id, collected, contributor } = req.body ?? {};
+    const { id, collected, contributor, released, cancelled } = req.body ?? {};
     if (!id) return res.status(400).json({ error: 'id required' });
 
     const pots = (await storeGet<CollectionPot[]>(KEYS.pots)) ?? [];
@@ -54,6 +60,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...p,
         collected: Number(collected ?? p.collected),
         contributors: contributors.sort((a, b) => b.amount - a.amount),
+        ...(released != null ? { released: Boolean(released) } : {}),
+        ...(cancelled != null ? { cancelled: Boolean(cancelled) } : {}),
       };
     });
     await storeSet(KEYS.pots, next);

@@ -1,20 +1,32 @@
-import { useCallback, useState } from 'react';
-import { CHAIN_ID } from '@particle-network/universal-account-sdk';
+import { useCallback, useEffect, useState } from 'react';
 import type { Intent } from '@/lib/intents';
 import { parseIntentAsync, resolveRecipient } from '@/lib/parser';
-import { formatChainBreakdown } from '@/lib/assets';
+import { getChainBreakdown, getTokenBreakdown } from '@/lib/assets';
 import {
   type ChatMessage,
   type ConfirmPayload,
+  clearChatMessages,
   loadChatMessages,
   saveChatMessages,
   uid,
 } from '@/lib/storage';
-import { USDC_ARBITRUM, formatUsd, formatWalletError } from '@/lib/constants';
-import { giftLink, inviteLink } from '@/lib/links';
-import { fetchGiftApi, claimGiftApi } from '@/lib/api';
+import { formatUsd, formatWalletError } from '@/lib/constants';
+import { assertTransferReady, createUsdcSendTransaction } from '@/lib/uaTransfer';
+import { scheduleBalanceRefresh } from '@/lib/balanceRefresh';
+import { mapTxStatus, TX_POLL_INTERVAL_MS } from '@/lib/txTracker';
+import { inviteLink, requestLink } from '@/lib/links';
+import { parseReceiptApi, shareReceiptApi } from '@/lib/api';
 import { addRecurringTip } from '@/lib/recurringTips';
-import { haptic, shareReceipt, isGroupChat, getTelegramChat } from '@/lib/telegram';
+import { blobToBase64, generateReceiptImage } from '@/lib/receiptImage';
+import {
+  haptic,
+  shareReceipt,
+  shareUrl,
+  isGroupChat,
+  getTelegramChat,
+  getTelegramChatId,
+  canShareToGroup,
+} from '@/lib/telegram';
 import { usePayGram, userHandle } from './PayGramProvider';
 import { useUniversalAccount } from './UniversalAccountProvider';
 import { useAuth } from './AuthProvider';
@@ -22,15 +34,15 @@ import { useAuth } from './AuthProvider';
 const QUICK_ACTIONS = ['Send', 'Tip', 'Split', 'Request', 'Collect', 'Swap'] as const;
 
 export function useChat() {
-  const { universalAccount, primaryAssets, ensureDelegated, signAndSend, refreshBalance, initError, executeSwap } =
+  const { universalAccount, primaryAssets, ensureDelegated, signAndSend, refreshBalance, initError, executeSwap, getTransaction } =
     useUniversalAccount();
-  const { telegramUser, walletAddress } = useAuth();
+  const { telegramUser, walletAddress, paygramUsername } = useAuth();
   const paygram = usePayGram();
   const [messages, setMessages] = useState<ChatMessage[]>(() => loadChatMessages());
   const [input, setInput] = useState('');
   const [processing, setProcessing] = useState(false);
 
-  const me = userHandle(telegramUser?.username, walletAddress);
+  const me = userHandle(telegramUser?.username, walletAddress, paygramUsername);
   const balance = primaryAssets?.totalAmountInUSD ?? 0;
 
   const persist = useCallback((next: ChatMessage[]) => {
@@ -54,6 +66,79 @@ export function useChat() {
     [persist],
   );
 
+  const clearChat = useCallback(() => {
+    clearChatMessages();
+    setMessages([]);
+  }, []);
+
+  useEffect(() => {
+    const onProgress = () => setMessages(loadChatMessages());
+    window.addEventListener('paygram:chat-progress', onProgress);
+    return () => window.removeEventListener('paygram:chat-progress', onProgress);
+  }, []);
+
+  useEffect(() => {
+    const hasPending = messages.some(
+      (m) => m.type === 'receipt' && m.receipt?.status === 'pending' && m.receipt.txId,
+    );
+    if (!hasPending || !getTransaction) return;
+
+    let cancelled = false;
+
+    const syncReceipts = async () => {
+      const current = loadChatMessages();
+      let updated = false;
+      const next: ChatMessage[] = [];
+
+      for (const m of current) {
+        if (m.type !== 'receipt' || !m.receipt || m.receipt.status !== 'pending' || !m.receipt.txId) {
+          next.push(m);
+          continue;
+        }
+        try {
+          const details = await getTransaction(m.receipt.txId);
+          const mapped = mapTxStatus(details?.status as number | string | undefined);
+          if (mapped === 'pending') {
+            next.push(m);
+            continue;
+          }
+          updated = true;
+          const r = m.receipt;
+          const verb =
+            r.intentType === 'tip' ? 'Tipped' : r.intentType === 'swap' ? 'Swapped' : r.intentType === 'send' ? 'Sent' : 'Paid';
+          const content =
+            mapped === 'confirmed'
+              ? `${verb} ${formatUsd(r.amount)}${r.counterparty ? ` to ${r.counterparty}` : ''}`
+              : `Failed — ${verb.toLowerCase()} ${formatUsd(r.amount)}`;
+          next.push({
+            ...m,
+            content,
+            receipt: {
+              ...r,
+              status: mapped,
+              emoji: mapped === 'confirmed' ? '✅' : '❌',
+            },
+          });
+          if (mapped === 'confirmed') {
+            haptic('success');
+            void refreshBalance();
+          }
+        } catch {
+          next.push(m);
+        }
+      }
+
+      if (!cancelled && updated) persist(next);
+    };
+
+    void syncReceipts();
+    const timer = window.setInterval(() => void syncReceipts(), TX_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [messages, getTransaction, persist, refreshBalance]);
+
   const showConfirm = useCallback(
     (confirm: ConfirmPayload, content: string) => {
       append({
@@ -71,17 +156,29 @@ export function useChat() {
       if (!universalAccount) {
         throw new Error('Wallet not ready — wait a moment or reopen PayGram');
       }
-      await ensureDelegated();
-      const transaction = await universalAccount.createTransferTransaction({
-        token: { chainId: CHAIN_ID.ARBITRUM_MAINNET_ONE, address: USDC_ARBITRUM },
-        amount: String(amount),
+      const assets = (await refreshBalance()) ?? primaryAssets;
+      const receiver = assertTransferReady({
+        amount,
         receiver: address,
+        sender: walletAddress,
+        assets,
       });
-      const result = await signAndSend(transaction as { rootHash: string; userOps?: unknown[] });
+      await ensureDelegated({ assets });
+      const transaction = await createUsdcSendTransaction(universalAccount, amount, receiver);
+      const result = await signAndSend(transaction);
       await refreshBalance();
+      scheduleBalanceRefresh(refreshBalance);
       return result.transactionId;
     },
-    [universalAccount, initError, ensureDelegated, signAndSend, refreshBalance],
+    [
+      universalAccount,
+      initError,
+      ensureDelegated,
+      signAndSend,
+      refreshBalance,
+      primaryAssets,
+      walletAddress,
+    ],
   );
 
   const handleIntent = useCallback(
@@ -89,10 +186,17 @@ export function useChat() {
       if (intent.type === 'balance') {
         const assets = await refreshBalance();
         const total = assets?.totalAmountInUSD ?? balance;
-        const breakdown = formatChainBreakdown(assets);
+        const chains = getChainBreakdown(assets).map((c) => ({ name: c.name, amount: c.amountInUSD }));
+        const tokenMap = new Map<string, number>();
+        for (const t of getTokenBreakdown(assets)) {
+          const key = t.symbol.toUpperCase();
+          tokenMap.set(key, (tokenMap.get(key) ?? 0) + t.amountInUSD);
+        }
+        const tokens = [...tokenMap.entries()].map(([symbol, amount]) => ({ symbol, amount }));
         append({
           type: 'balance',
-          content: `Your balance is ${formatUsd(total)}${breakdown ? `\n${breakdown}` : ''}`,
+          content: `Your balance is ${formatUsd(total)}`,
+          balanceDetail: { total, chains, tokens },
         });
         return;
       }
@@ -128,11 +232,20 @@ export function useChat() {
 
       if (intent.type === 'request') {
         await paygram.createRequest(me, intent.from, intent.amount, intent.note);
+        const username = paygramUsername ?? me.replace(/^@/, '');
+        const link = requestLink(username, intent.amount, intent.note);
         append({
           type: 'receipt',
-          content: `Request sent to ${intent.from} for ${formatUsd(intent.amount)}`,
-          receipt: { intentType: 'request', amount: intent.amount, counterparty: intent.from, status: 'pending' },
+          content: `Request sent to ${intent.from} for ${formatUsd(intent.amount)} — share so they can pay in one tap`,
+          receipt: {
+            intentType: 'request',
+            amount: intent.amount,
+            counterparty: intent.from,
+            note: intent.note,
+            status: 'pending',
+          },
         });
+        shareUrl(link, `Pay me ${formatUsd(intent.amount)} on PayGram`);
         return;
       }
 
@@ -161,17 +274,6 @@ export function useChat() {
         return;
       }
 
-      if (intent.type === 'gift') {
-        if (!walletAddress) return;
-        const gift = await paygram.createGift(intent.amount, me, walletAddress);
-        const link = giftLink(gift.id, gift.amount);
-        append({
-          type: 'receipt',
-          content: `🎁 Gift link created — ${formatUsd(intent.amount)}`,
-          receipt: { intentType: 'gift', amount: intent.amount, note: link, status: 'pending' },
-        });
-        return;
-      }
 
       if (intent.type === 'remind') {
         const pending = paygram.requests.find(
@@ -213,7 +315,7 @@ export function useChat() {
         if (!address || address === '0x') {
           append({
             type: 'error',
-            content: `${intent.recipient} isn't on PayGram yet. Invite them to open the app first.`,
+            content: `${intent.recipient} isn't on PayGram yet. Invite them to open the app, then try again.`,
           });
           return;
         }
@@ -229,7 +331,7 @@ export function useChat() {
         );
       }
     },
-    [append, balance, me, paygram, refreshBalance, showConfirm, walletAddress],
+    [append, balance, me, paygram, paygramUsername, refreshBalance, showConfirm, walletAddress],
   );
 
   const submitMessage = useCallback(
@@ -248,12 +350,28 @@ export function useChat() {
       setProcessing(true);
       try {
         if (confirm.intentType === 'split' && confirm.recipients) {
-          await paygram.createSplit(me, confirm.amount, confirm.recipients, confirm.note);
+          if (!walletAddress) throw new Error('Wallet not ready');
+          const reqs = await paygram.createSplit(
+            me,
+            confirm.amount,
+            confirm.recipients,
+            confirm.note,
+            walletAddress,
+          );
+          const billId = reqs[0]?.onChainBillId;
           removeMessage(messageId);
           append({
             type: 'receipt',
-            content: `✅ Split ${formatUsd(confirm.amount)} — requests sent to ${confirm.recipients.join(', ')}`,
-            receipt: { intentType: 'split', amount: confirm.amount, status: 'pending' },
+            content:
+              billId != null
+                ? `✅ Split ${formatUsd(confirm.amount)} locked in escrow #${billId} — ${confirm.recipients.join(', ')}`
+                : `✅ Split ${formatUsd(confirm.amount)} — requests sent to ${confirm.recipients.join(', ')}`,
+            receipt: {
+              intentType: 'split',
+              amount: confirm.amount,
+              status: 'pending',
+              txId: undefined,
+            },
           });
           haptic('success');
           return;
@@ -279,6 +397,7 @@ export function useChat() {
             content: `✅ Contributed ${formatUsd(confirm.amount)} to ${confirm.note}`,
             receipt: { intentType: 'contribute', amount: confirm.amount, status: 'confirmed' },
           });
+          haptic('success');
           return;
         }
 
@@ -288,20 +407,27 @@ export function useChat() {
             content: `⏳ Swapping ${formatUsd(confirm.amount)} to ${confirm.toToken}…`,
             receipt: { intentType: 'swap', amount: confirm.amount, status: 'pending' },
           });
-          const { transactionId: txId } = await executeSwap(confirm.amount, confirm.toToken);
           removeMessage(messageId);
+          const { transactionId: txId } = await executeSwap(confirm.amount, confirm.toToken);
+          paygram.logTxActivity({
+            type: 'swap',
+            amount: confirm.amount,
+            note: `→ ${confirm.toToken}`,
+            txId,
+            status: 'pending',
+          });
           persist(
             loadChatMessages().map((m) =>
               m.id === pendingReceipt.id
                 ? {
                     ...m,
-                    content: `✅ Swapped ${formatUsd(confirm.amount)} to ${confirm.toToken}`,
+                    content: `⏳ Swapped ${formatUsd(confirm.amount)} to ${confirm.toToken}`,
                     receipt: {
                       intentType: 'swap',
                       amount: confirm.amount,
                       txId,
-                      status: 'confirmed' as const,
-                      emoji: '✅',
+                      status: 'pending' as const,
+                      emoji: '⏳',
                     },
                   }
                 : m,
@@ -316,28 +442,50 @@ export function useChat() {
         }
 
         if (confirm.resolvedAddress) {
-        const txId = await executeSend(confirm.amount, confirm.resolvedAddress);
-        removeMessage(messageId);
-        haptic('success');
-
-        if (confirm.note === 'Gift' && confirm.giftId) {
-          await claimGiftApi(confirm.giftId);
-        }
-
-        await paygram.refresh();
-        append({
+        const pendingReceipt = append({
           type: 'receipt',
-          content: `✅ ${confirm.intentType === 'tip' ? 'Tipped' : confirm.note === 'Gift' ? 'Claimed gift' : 'Sent'} ${formatUsd(confirm.amount)} to ${confirm.recipient}`,
+          content: `⏳ Sending ${formatUsd(confirm.amount)} to ${confirm.recipient}…`,
           receipt: {
             intentType: confirm.intentType,
             amount: confirm.amount,
             counterparty: confirm.recipient,
-            note: confirm.note,
-            txId,
-            status: 'confirmed',
-            emoji: '✅',
+            status: 'pending',
           },
         });
+        removeMessage(messageId);
+
+        const txId = await executeSend(confirm.amount, confirm.resolvedAddress);
+        haptic('success');
+
+        paygram.logTxActivity({
+          type: confirm.intentType,
+          amount: confirm.amount,
+          counterparty: confirm.recipient,
+          note: confirm.note,
+          txId,
+          status: 'pending',
+        });
+
+        await paygram.refresh();
+        persist(
+          loadChatMessages().map((m) =>
+            m.id === pendingReceipt.id
+              ? {
+                  ...m,
+                  content: `⏳ ${confirm.intentType === 'tip' ? 'Tipped' : 'Sent'} ${formatUsd(confirm.amount)} to ${confirm.recipient}`,
+                  receipt: {
+                    intentType: confirm.intentType,
+                    amount: confirm.amount,
+                    counterparty: confirm.recipient,
+                    note: confirm.note,
+                    txId,
+                    status: 'pending' as const,
+                    emoji: '⏳',
+                  },
+                }
+              : m,
+          ),
+        );
         }
       } catch (err) {
         haptic('error');
@@ -346,7 +494,7 @@ export function useChat() {
         setProcessing(false);
       }
     },
-    [append, executeSend, executeSwap, me, paygram, persist, removeMessage],
+    [append, executeSend, executeSwap, me, paygram, persist, removeMessage, walletAddress],
   );
 
   const cancelConfirm = useCallback(
@@ -362,7 +510,10 @@ export function useChat() {
   }, []);
 
   const inviteFriend = useCallback(() => {
-    shareReceipt(`Join me on PayGram — pay friends with @username in Telegram! ${inviteLink()}`, '💸');
+    shareReceipt(
+      `Join me on PayGram — pay friends with @username in Telegram!\n${inviteLink()}`,
+      '💸',
+    );
   }, []);
 
   const applyQuickAction = useCallback((action: string) => {
@@ -384,7 +535,7 @@ export function useChat() {
       if (!address || address === '0x') {
         append({
           type: 'error',
-          content: `${recipient} isn't on PayGram yet. Ask them to open the app first.`,
+          content: `${recipient} isn't on PayGram yet. Invite them to open the app, then try again.`,
         });
         return;
       }
@@ -399,29 +550,6 @@ export function useChat() {
       );
     },
     [append, showConfirm],
-  );
-
-  const openGiftDeepLink = useCallback(
-    async (giftId: string) => {
-      const local = paygram.gifts.find((g) => g.id === giftId);
-      const gift = local ?? (await fetchGiftApi(giftId));
-      if (!gift || gift.claimed) {
-        append({ type: 'error', content: 'Gift link not found or already claimed.' });
-        return;
-      }
-      showConfirm(
-        {
-          intentType: 'send',
-          amount: gift.amount,
-          recipient: gift.creator,
-          resolvedAddress: gift.creatorAddress,
-          note: 'Gift',
-          giftId: gift.id,
-        },
-        'Claim gift',
-      );
-    },
-    [append, paygram.gifts, showConfirm],
   );
 
   const openPotDeepLink = useCallback(
@@ -445,6 +573,159 @@ export function useChat() {
     [append, paygram.pots, showConfirm],
   );
 
+  const openRequestDeepLink = useCallback(
+    async (amount: number, target: string, note?: string) => {
+      // Shared request links open Confirm to PAY the requester (not create another request).
+      const recipient = target.startsWith('@') ? target : `@${target}`;
+      const address = await resolveRecipient(recipient);
+      if (!address || address === '0x') {
+        append({
+          type: 'error',
+          content: `${recipient} isn't on PayGram yet. Invite them to open the app, then try again.`,
+        });
+        return;
+      }
+      showConfirm(
+        {
+          intentType: 'send',
+          amount,
+          recipient,
+          note: note ?? 'Payment request',
+          resolvedAddress: address,
+          balanceBefore: balance,
+        },
+        'Confirm payment',
+      );
+    },
+    [append, balance, showConfirm],
+  );
+
+  const openSplitDeepLink = useCallback(
+    (amount: number, targets: string[]) => {
+      const recipients = targets.map((t) => (t.startsWith('@') ? t : `@${t}`));
+      showConfirm(
+        {
+          intentType: 'split',
+          amount,
+          recipients,
+        },
+        'Confirm split',
+      );
+    },
+    [showConfirm],
+  );
+
+  const shareReceiptToGroup = useCallback(
+    async (content: string, details?: { amount: number; recipient?: string; note?: string }) => {
+      const chatId = getTelegramChatId();
+      if (!chatId) {
+        append({ type: 'error', content: 'Open PayGram from a group chat to post receipts here.' });
+        return;
+      }
+      try {
+        let imageBase64: string | undefined;
+        if (details) {
+          const blob = await generateReceiptImage({
+            amount: details.amount,
+            payer: me,
+            recipient: details.recipient,
+            note: details.note,
+            emoji: '✅',
+          });
+          imageBase64 = await blobToBase64(blob);
+        }
+        const ok = await shareReceiptApi({
+          chatId,
+          text: content,
+          imageBase64,
+        });
+        if (ok) {
+          haptic('success');
+          append({ type: 'system', content: 'Posted receipt to the group.' });
+        } else {
+          append({ type: 'error', content: 'Could not post to group — add @paygram_bbot to the group.' });
+        }
+      } catch (e) {
+        append({ type: 'error', content: formatWalletError(e) });
+      }
+    },
+    [append, me],
+  );
+
+  const scanReceipt = useCallback(
+    async (file: File) => {
+      setProcessing(true);
+      const scanning = append({
+        type: 'assistant',
+        content: 'Scanning receipt…',
+        assistant: { variant: 'scanning', fileName: file.name },
+      });
+      try {
+        const buffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        const imageBase64 = btoa(binary);
+        const parsed = await parseReceiptApi(imageBase64, file.type || 'image/jpeg');
+        const msgs = loadChatMessages().filter((m) => m.id !== scanning.id);
+        if (!parsed) {
+          persist([
+            ...msgs,
+            {
+              id: uid(),
+              type: 'error',
+              content: 'Could not read receipt. Try a clearer photo or set OPENAI_API_KEY.',
+              timestamp: Date.now(),
+            },
+          ]);
+          return;
+        }
+        const note = parsed.merchant
+          ? `${parsed.merchant}${parsed.note ? ` · ${parsed.note}` : ''}`
+          : parsed.note ?? 'Receipt split';
+        const splitCommand = `split $${parsed.total.toFixed(2)} with @alice @bob`;
+        persist([
+          ...msgs,
+          {
+            id: uid(),
+            type: 'assistant',
+            content: 'Receipt analyzed',
+            timestamp: Date.now(),
+            assistant: {
+              variant: 'analyzed',
+              total: parsed.total,
+              merchant: parsed.merchant ?? undefined,
+              note: parsed.note ?? note,
+              splitCommand,
+            },
+          },
+        ]);
+        setInput(splitCommand);
+      } catch (e) {
+        const msgs = loadChatMessages().filter((m) => m.id !== scanning.id);
+        persist([
+          ...msgs,
+          {
+            id: uid(),
+            type: 'error',
+            content: formatWalletError(e),
+            timestamp: Date.now(),
+          },
+        ]);
+      } finally {
+        setProcessing(false);
+      }
+    },
+    [append, persist],
+  );
+
+  const applySplitCommand = useCallback(
+    (command: string) => {
+      void submitMessage(command);
+    },
+    [submitMessage],
+  );
+
   return {
     messages,
     input,
@@ -454,15 +735,21 @@ export function useChat() {
     cancelConfirm,
     shareReceipt: shareReceiptMsg,
     inviteFriend,
+    applySplitCommand,
     groupHint: isGroupChat()
-      ? `Opened from ${getTelegramChat()?.title ?? 'group'} — use @username in splits`
+      ? `Group: ${getTelegramChat()?.title ?? 'chat'} — post receipts here after paying`
       : null,
+    canShareToGroup: canShareToGroup(),
     processing,
     balance,
     quickActions: QUICK_ACTIONS,
     applyQuickAction,
     openPayDeepLink,
-    openGiftDeepLink,
     openPotDeepLink,
+    openRequestDeepLink,
+    openSplitDeepLink,
+    shareReceiptToGroup,
+    scanReceipt,
+    clearChat,
   };
 }

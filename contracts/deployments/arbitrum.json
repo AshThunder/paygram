@@ -1,0 +1,15 @@
+{
+  "network": "arbitrum",
+  "chainId": 42161,
+  "deployedAt": "2026-07-11T20:50:59.339Z",
+  "usdc": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+  "mockUsdc": false,
+  "rescueGuardian": "0x77539C4ec616360751b97563Dd6B4A9dE5D1E578",
+  "PayGramPot": "0x6D58560966914637565B4a10ebDADD56ea49E2cF",
+  "PayGramBillEscrow": "0xe927742DBfFa80Df2575B5220cc74d91459A86A8",
+  "PayGramRosca": "0xd6aCb0ef288001c171FCA29300f001970B2e5a45",
+  "PayGramTab": "0xcfbb48A1C3890BB9a550d92A3dC0A02571B0A4bE",
+  "PayGramAllowance": "0x1d19aD900A157d83982816B48f4452bD01eF8B7b",
+  "deployer": "0x77539C4ec616360751b97563Dd6B4A9dE5D1E578",
+  "previousPayGramRosca": "0xb94400Abb2afc6b7DfC2a699e362F077841aD15d"
+}

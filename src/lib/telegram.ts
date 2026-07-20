@@ -1,11 +1,44 @@
+type TelegramWebApp = {
+  ready: () => void;
+  expand: () => void;
+  setHeaderColor: (color: string) => void;
+  setBackgroundColor: (color: string) => void;
+  initData: string;
+  initDataUnsafe: {
+    user?: {
+      id: number;
+      first_name: string;
+      last_name?: string;
+      username?: string;
+    };
+    chat?: {
+      id?: number;
+      type?: string;
+      title?: string;
+    };
+    start_param?: string;
+  };
+  HapticFeedback?: {
+    impactOccurred: (style: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft') => void;
+    notificationOccurred: (type: 'error' | 'success' | 'warning') => void;
+  };
+  openTelegramLink?: (url: string) => void;
+  shareMessage?: (params: { text: string }) => void;
+  close: () => void;
+  themeParams: Record<string, string>;
+};
+
+function webApp(): TelegramWebApp | undefined {
+  return (window as unknown as { Telegram?: { WebApp: TelegramWebApp } }).Telegram?.WebApp;
+}
+
 export function getTelegramUser(): {
   id: number;
   username?: string;
   firstName: string;
   lastName?: string;
 } | null {
-  const tg = window.Telegram?.WebApp;
-  const user = tg?.initDataUnsafe?.user;
+  const user = webApp()?.initDataUnsafe?.user;
   if (!user) return null;
   return {
     id: user.id,
@@ -15,10 +48,19 @@ export function getTelegramUser(): {
   };
 }
 
-export function getTelegramChat(): { type?: string; title?: string } | null {
-  const chat = window.Telegram?.WebApp?.initDataUnsafe?.chat;
+export function getTelegramChat(): { id?: number; type?: string; title?: string } | null {
+  const chat = webApp()?.initDataUnsafe?.chat;
   if (!chat) return null;
-  return { type: chat.type, title: chat.title };
+  return { id: chat.id, type: chat.type, title: chat.title };
+}
+
+export function getTelegramChatId(): number | null {
+  return getTelegramChat()?.id ?? null;
+}
+
+export function canShareToGroup(): boolean {
+  const chat = getTelegramChat();
+  return Boolean(chat?.id && (chat.type === 'group' || chat.type === 'supergroup'));
 }
 
 export function isGroupChat(): boolean {
@@ -27,11 +69,11 @@ export function isGroupChat(): boolean {
 }
 
 export function isTelegramMiniApp(): boolean {
-  return Boolean(window.Telegram?.WebApp?.initData);
+  return Boolean(webApp()?.initData);
 }
 
 export function applyTelegramTheme(): void {
-  const tg = window.Telegram?.WebApp;
+  const tg = webApp();
   if (!tg?.themeParams) return;
   const p = tg.themeParams;
   const root = document.documentElement;
@@ -49,18 +91,18 @@ export function applyTelegramTheme(): void {
 }
 
 export function initTelegramApp(): void {
-  const tg = window.Telegram?.WebApp;
+  const tg = webApp();
   if (!tg) return;
   tg.ready();
   tg.expand();
   applyTelegramTheme();
-  const bg = tg.themeParams?.bg_color ?? '#0b0b0f';
+  const bg = tg.themeParams?.bg_color ?? '#f9f9fa';
   tg.setHeaderColor(bg);
   tg.setBackgroundColor(bg);
 }
 
 export function haptic(type: 'light' | 'medium' | 'heavy' | 'success' | 'error'): void {
-  const tg = window.Telegram?.WebApp;
+  const tg = webApp();
   if (!tg?.HapticFeedback) return;
   if (type === 'success' || type === 'error') {
     tg.HapticFeedback.notificationOccurred(type);
@@ -70,7 +112,7 @@ export function haptic(type: 'light' | 'medium' | 'heavy' | 'success' | 'error')
 }
 
 export function shareUrl(url: string, text: string): void {
-  const tg = window.Telegram?.WebApp;
+  const tg = webApp();
   if (tg?.openTelegramLink) {
     const share = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
     tg.openTelegramLink(share);
@@ -81,7 +123,7 @@ export function shareUrl(url: string, text: string): void {
 
 export function shareReceipt(text: string, emoji = '✅'): void {
   const full = `${emoji} ${text}`;
-  const tg = window.Telegram?.WebApp as { shareMessage?: (p: { text: string }) => void } | undefined;
+  const tg = webApp();
   if (tg?.shareMessage) {
     try {
       tg.shareMessage({ text: full });
@@ -94,40 +136,5 @@ export function shareReceipt(text: string, emoji = '✅'): void {
 }
 
 export function getStartParam(): string | null {
-  return window.Telegram?.WebApp?.initDataUnsafe?.start_param ?? null;
-}
-
-declare global {
-  interface Window {
-    Telegram?: {
-      WebApp: {
-        ready: () => void;
-        expand: () => void;
-        setHeaderColor: (color: string) => void;
-        setBackgroundColor: (color: string) => void;
-        initData: string;
-        initDataUnsafe: {
-          user?: {
-            id: number;
-            first_name: string;
-            last_name?: string;
-            username?: string;
-          };
-          chat?: {
-            type?: string;
-            title?: string;
-          };
-          start_param?: string;
-        };
-        HapticFeedback?: {
-          impactOccurred: (style: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft') => void;
-          notificationOccurred: (type: 'error' | 'success' | 'warning') => void;
-        };
-        openTelegramLink?: (url: string) => void;
-        shareMessage?: (params: { text: string }) => void;
-        close: () => void;
-        themeParams: Record<string, string>;
-      };
-    };
-  }
+  return webApp()?.initDataUnsafe?.start_param ?? null;
 }

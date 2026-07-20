@@ -4,17 +4,32 @@ export type ChatMessageType =
   | 'confirm'
   | 'receipt'
   | 'error'
-  | 'balance';
+  | 'balance'
+  | 'assistant';
+
+export type AssistantPayload = {
+  variant: 'scanning' | 'analyzed';
+  fileName?: string;
+  total?: number;
+  merchant?: string;
+  note?: string;
+  splitCommand?: string;
+};
+
+export type BalancePayload = {
+  total: number;
+  chains: Array<{ name: string; amount: number }>;
+  tokens: Array<{ symbol: string; amount: number }>;
+};
 
 export type ConfirmPayload = {
-  intentType: 'send' | 'tip' | 'request' | 'split' | 'collect' | 'contribute' | 'gift' | 'swap';
+  intentType: 'send' | 'tip' | 'request' | 'split' | 'collect' | 'contribute' | 'swap';
   amount: number;
   recipient?: string;
   recipients?: string[];
   from?: string;
   title?: string;
   note?: string;
-  giftId?: string;
   resolvedAddress?: string;
   balanceBefore?: number;
   toToken?: string;
@@ -37,6 +52,8 @@ export type ChatMessage = {
   timestamp: number;
   confirm?: ConfirmPayload;
   receipt?: ReceiptPayload;
+  assistant?: AssistantPayload;
+  balanceDetail?: BalancePayload;
 };
 
 export type PaymentRequest = {
@@ -47,6 +64,10 @@ export type PaymentRequest = {
   note?: string;
   status: 'pending' | 'paid' | 'cancelled';
   createdAt: number;
+  /** PayGramBillEscrow id when split is on-chain. */
+  onChainBillId?: number | null;
+  chainId?: number | null;
+  payeeAddress?: string | null;
 };
 
 export type PotContributor = {
@@ -62,6 +83,13 @@ export type CollectionPot = {
   creator: string;
   contributors?: PotContributor[];
   createdAt: number;
+  /** PayGramPot id when VITE_POT is set. */
+  onChainId?: number | null;
+  chainId?: number | null;
+  beneficiaryAddress?: string | null;
+  creatorAddress?: string | null;
+  released?: boolean;
+  cancelled?: boolean;
 };
 
 export type ActivityItem = {
@@ -88,12 +116,38 @@ function save<T>(key: string, value: T): void {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+/** Append a system / progress line into chat history (e.g. pot contributions). */
+export function appendChatProgress(content: string): ChatMessage {
+  const msg: ChatMessage = {
+    id: uid(),
+    type: 'system',
+    content,
+    timestamp: Date.now(),
+  };
+  saveChatMessages([...loadChatMessages(), msg]);
+  try {
+    window.dispatchEvent(new CustomEvent('paygram:chat-progress', { detail: msg }));
+  } catch {
+    /* ignore */
+  }
+  return msg;
+}
+
 export function loadChatMessages(): ChatMessage[] {
   return load<ChatMessage[]>('paygram_chat', []);
 }
 
 export function saveChatMessages(messages: ChatMessage[]): void {
   save('paygram_chat', messages);
+}
+
+export function clearChatMessages(): void {
+  save('paygram_chat', []);
+  try {
+    window.dispatchEvent(new CustomEvent('paygram:chat-progress'));
+  } catch {
+    /* ignore */
+  }
 }
 
 export function loadRequests(): PaymentRequest[] {
@@ -129,6 +183,14 @@ export function addActivity(item: Omit<ActivityItem, 'id' | 'createdAt'>): Activ
   const items = [entry, ...loadActivity()];
   saveActivity(items);
   return entry;
+}
+
+/** Persist a status update for a local activity row (by id or txId). */
+export function updateActivityStatus(idOrTxId: string, status: string): void {
+  const items = loadActivity().map((a) =>
+    a.id === idOrTxId || a.txId === idOrTxId ? { ...a, status } : a,
+  );
+  saveActivity(items);
 }
 
 export function uid(): string {

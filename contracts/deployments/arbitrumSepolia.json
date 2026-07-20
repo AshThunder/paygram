@@ -1,0 +1,15 @@
+{
+  "network": "arbitrumSepolia",
+  "chainId": 421614,
+  "deployedAt": "2026-07-11T14:31:07.773Z",
+  "usdc": "0x6D58560966914637565B4a10ebDADD56ea49E2cF",
+  "mockUsdc": true,
+  "rescueGuardian": "0x77539C4ec616360751b97563Dd6B4A9dE5D1E578",
+  "PayGramPot": "0xcfbb48A1C3890BB9a550d92A3dC0A02571B0A4bE",
+  "PayGramBillEscrow": "0x1d19aD900A157d83982816B48f4452bD01eF8B7b",
+  "PayGramRosca": "0xd6aCb0ef288001c171FCA29300f001970B2e5a45",
+  "PayGramTab": "0xDe6b429911735BD9a2B64BF1A7b92A144996233C",
+  "PayGramAllowance": "0xd95A1aA47B6C5aB010e43d792ad5336c3dFE0786",
+  "deployer": "0x77539C4ec616360751b97563Dd6B4A9dE5D1E578",
+  "rehearsal": true
+}

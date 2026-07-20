@@ -10,13 +10,15 @@
     "bot": "tsx bot/index.ts",
     "vercel:dev": "vercel dev",
     "lint": "eslint src --ext ts,tsx",
-    "presentation": "node scripts/generate-presentation.mjs"
+    "presentation": "node scripts/generate-presentation.mjs",
+    "postinstall": "node scripts/fix-ua-sdk-exports.mjs"
   },
   "dependencies": {
     "@magic-ext/evm": "^1.3.0",
-    "@particle-network/universal-account-sdk": "^1.0.27",
+    "@particle-network/universal-account-sdk": "2.0.3",
     "ethers": "^6.16.0",
     "magic-sdk": "^33.5.0",
+    "qrcode.react": "^4.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0",

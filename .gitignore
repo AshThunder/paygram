@@ -1,18 +1,40 @@
 node_modules
 dist
 .env
-,env
 .env.local
 *.local
 .DS_Store
 tsconfig.tsbuildinfo
 _reference
+.venv-pptx
+.vercel
 
-# Internal planning & research (not for public repo)
+# --- Internal / competition docs (keep local, not public) ---
 docs/BUILD-PLAN.md
 docs/HACKATHON-RESEARCH.md
 docs/CHECKPOINT-PRESENTATION.md
+docs/FEATURE-ROADMAP.md
+docs/STITCH-PROMPTS.md
+docs/PITCH.md
+docs/SUBMISSION.md
+docs/EXPLAINER-PITCH.md
 docs/presentation.html
-.venv-pptx
-.vercel
-.env.local
+docs/*.pptx
+
+# Design export dumps (Stitch / mocks — not app source)
+stitch_paygram_social_fintech_hub*/
+stitch_paygram_ui_design_system*/
+
+# Accidental junk
+,env
+
+# Contract secrets & build outputs
+contracts/.env
+contracts/.wallets/
+contracts/cache/
+contracts/artifacts/
+contracts/typechain-types/
+contracts/coverage/
+contracts/node_modules/
+demo/node_modules/
+demo/dist/

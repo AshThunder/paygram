@@ -13,16 +13,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === 'GET') {
     const requests = (await storeGet<PaymentRequest[]>(KEYS.requests)) ?? [];
-    const forUser = req.query.for ? String(req.query.for).toLowerCase() : null;
+    const forUser = req.query.for
+      ? String(req.query.for).replace(/^@/, '').toLowerCase()
+      : null;
     const filtered = forUser
-      ? requests.filter((r) => r.toUser.toLowerCase() === forUser || r.fromUser.toLowerCase() === forUser)
+      ? requests.filter((r) => {
+          const to = r.toUser.replace(/^@/, '').toLowerCase();
+          const from = r.fromUser.replace(/^@/, '').toLowerCase();
+          return to === forUser || from === forUser;
+        })
       : requests;
     return res.status(200).json({ requests: filtered });
   }
 
   if (req.method === 'POST') {
-    const { fromUser, toUser, amount, note } = req.body ?? {};
-    if (!fromUser || !toUser || !amount) {
+    const { fromUser, toUser, amount, note, onChainBillId, chainId, payeeAddress } = req.body ?? {};
+    if (!fromUser || !toUser || amount == null) {
       return res.status(400).json({ error: 'fromUser, toUser, amount required' });
     }
 
@@ -34,6 +40,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       note: note ? String(note) : undefined,
       status: 'pending',
       createdAt: Date.now(),
+      onChainBillId:
+        onChainBillId != null && Number.isFinite(Number(onChainBillId))
+          ? Number(onChainBillId)
+          : undefined,
+      chainId: chainId != null && Number.isFinite(Number(chainId)) ? Number(chainId) : undefined,
+      payeeAddress: payeeAddress ? String(payeeAddress) : undefined,
     };
 
     const requests = (await storeGet<PaymentRequest[]>(KEYS.requests)) ?? [];
