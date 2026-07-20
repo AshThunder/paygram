@@ -6,10 +6,10 @@ PayGram is a Telegram Mini App for the [UXmaxx Hackathon](https://www.encodeclub
 
 **Stack:** Vite + React · Magic (embedded wallet) · Particle Universal Accounts (EIP-7702) · Arbitrum · custom USDC escrows
 
-**Live:** https://paygram-rust.vercel.app · **telegram Bot (mini app):** [@paygram_bbot](https://t.me/paygram_bbot)
+**Live:** [https://paygram-rust.vercel.app](https://paygram-rust.vercel.app) · **Telegram Bot (mini app):** [@paygram_bbot](https://t.me/paygram_bbot)
 
 <p align="center">
-  <img src="./public/paygram-screens-collage.png" alt="PayGram screens: Home, Chat, Activity, Me" width="720" />
+  <img src="./public/paygram-screens-collage.png" alt="PayGram screens: Home, Chat, Activity, Me" width="360" />
 </p>
 
 <p align="center"><em>Home · Chat confirm · Activity history · Me</em></p>
@@ -20,16 +20,18 @@ PayGram is a Telegram Mini App for the [UXmaxx Hackathon](https://www.encodeclub
 
 A full payment product in Telegram, not a single-screen demo:
 
-| Area | What it does |
-|------|----------------|
-| **Home** | Unified balance, service grid, friends, net with friends |
-| **Chat** | Optional natural-language payments (type, confirm, done) |
-| **Activity** | Open requests, what you owe / are owed, transaction history |
-| **Collect** | Group collection pots with progress, contributions, shareable links |
-| **Circles** | ROSCA savings circles (on-chain rounds) |
-| **Tabs** | Lend / borrow ledger with on-chain tab vault |
-| **Friends** | PayGram contacts, quick send |
-| **Me** | Profile, funding, tip/pay links, chat command list, **About** (stack + Arbiscan) |
+
+| Area         | What it does                                                                     |
+| ------------ | -------------------------------------------------------------------------------- |
+| **Home**     | Unified balance, service grid, friends, net with friends                         |
+| **Chat**     | Optional natural-language payments (type, confirm, done)                         |
+| **Activity** | Open requests, what you owe / are owed, transaction history                      |
+| **Collect**  | Group collection pots with progress, contributions, shareable links              |
+| **Circles**  | ROSCA savings circles (on-chain rounds)                                          |
+| **Tabs**     | Lend / borrow ledger with on-chain tab vault                                     |
+| **Friends**  | PayGram contacts, quick send                                                     |
+| **Me**       | Profile, funding, tip/pay links, chat command list, **About** (stack + Arbiscan) |
+
 
 Dedicated screens cover send, tip, request, split, swap, and remind. Chat and forms share the same payment flows.
 
@@ -38,22 +40,26 @@ Dedicated screens cover send, tip, request, split, swap, and remind. Chat and fo
 ## Features
 
 ### Payments
+
 - **Send** to `@username` or `0x` address
 - **Tip** creators and friends
 - **Request** payment; settle from Activity
 - **Pay all** open requests in one batch
 
 ### Groups and credit
+
 - **Split** a bill; per-person requests in Activity
 - **Collect** group pots for trips, events, shared expenses
 - **Circles** ROSCA rounds with on-chain escrow
 - **Tabs** lend / borrow, repay, forgive
 
 ### Links and sharing
+
 - **Tip jar**, **pay link**, **checkout** deep links
 - **Receipt share** back to Telegram
 
 ### Infrastructure (invisible to users)
+
 - Unified balance across chains via Particle UA
 - Cross-chain routing via `createUniversalTransaction` + `expectTokens`
 - EIP-7702 one-time unlock on Arbitrum
@@ -64,8 +70,8 @@ Dedicated screens cover send, tip, request, split, swap, and remind. Chat and fo
 
 ## Smart contracts (Arbitrum One)
 
-Deployed **2026-07-11**. Token: native USDC `0xaf88d065e77c8cC2239327C5EDb3A432268e5831`.  
-Rescue guardian: `0x77539C4ec616360751b97563Dd6B4A9dE5D1E578`.  
+Deployed **2026-07-11**. Vaults settle in Circle USDC on Arbitrum (`0xaf88d065e77c8cC2239327C5EDb3A432268e5831`).  
+Rescue guardian (`0x77539C4ec616360751b97563Dd6B4A9dE5D1E578`) can only recover accidental excess tokens — not escrowed user funds.  
 **Status:** Source verified on Arbiscan (July 2026).
 
 | Contract | Address | Arbiscan |
@@ -82,13 +88,13 @@ Source: [`contracts/`](./contracts/) · deployment: [`contracts/deployments/arbi
 
 1. Get a free API key at [arbiscan.io/myapikey](https://arbiscan.io/myapikey).
 2. Add to `contracts/.env`:
-   ```
+  ```
    ARBISCAN_API_KEY=your_key_here
-   ```
+  ```
 3. Run:
-   ```bash
+  ```bash
    cd contracts && npm install && npm run verify:arb
-   ```
+  ```
 
 ---
 
@@ -123,17 +129,19 @@ npm run bot        # Shell bot — needs TELEGRAM_BOT_TOKEN
 
 ### Environment variables
 
-| Variable | Source |
-|----------|--------|
-| `VITE_MAGIC_API_KEY` | [dashboard.magic.link](https://dashboard.magic.link) |
-| `VITE_PROJECT_ID` | [dashboard.particle.network](https://dashboard.particle.network) |
-| `VITE_CLIENT_KEY` | Particle dashboard |
-| `VITE_APP_ID` | Particle dashboard (create a Web app) |
-| `VITE_ARB_RPC_URL` | Public or Alchemy Arbitrum RPC (optional) |
-| `VITE_POT`, `VITE_TAB`, … | From `npm run env:app` in `contracts/` after deploy |
-| `TELEGRAM_BOT_TOKEN` | [@BotFather](https://t.me/BotFather) |
-| `VITE_MINI_APP_URL` | Your deployed URL |
-| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Vercel Upstash Redis (username registry, circles) |
+
+| Variable                                | Source                                                           |
+| --------------------------------------- | ---------------------------------------------------------------- |
+| `VITE_MAGIC_API_KEY`                    | [dashboard.magic.link](https://dashboard.magic.link)             |
+| `VITE_PROJECT_ID`                       | [dashboard.particle.network](https://dashboard.particle.network) |
+| `VITE_CLIENT_KEY`                       | Particle dashboard                                               |
+| `VITE_APP_ID`                           | Particle dashboard (create a Web app)                            |
+| `VITE_ARB_RPC_URL`                      | Public or Alchemy Arbitrum RPC (optional)                        |
+| `VITE_POT`, `VITE_TAB`, …               | From `npm run env:app` in `contracts/` after deploy              |
+| `TELEGRAM_BOT_TOKEN`                    | [@BotFather](https://t.me/BotFather)                             |
+| `VITE_MINI_APP_URL`                     | Your deployed URL                                                |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Vercel Upstash Redis (username registry, circles)                |
+
 
 ---
 
@@ -197,11 +205,11 @@ npm run build
 
 1. Import repo at [vercel.com](https://vercel.com)
 2. Add env vars from `.env.example` (Magic, Particle, Telegram, RPC, contract addresses)
-3. **Storage:** Vercel → **Upstash Redis** → connect (adds `KV_REST_API_*`)
+3. **Storage:** Vercel → **Upstash Redis** → connect (adds `KV_REST_API_`*)
 4. Deploy. API routes include `/api/user-registry`, `/api/requests`, `/api/pots`, `/api/circles`, `/api/tabs`, …
 5. Set `VITE_MINI_APP_URL` to your Vercel URL, redeploy
 
-**Live app:** https://paygram-rust.vercel.app  
+**Live app:** [https://paygram-rust.vercel.app](https://paygram-rust.vercel.app)  
 **Telegram bot:** [@paygram_bbot](https://t.me/paygram_bbot)
 
 ### Local full-stack dev
@@ -217,14 +225,16 @@ npm run dev          # Frontend only — API falls back to localStorage
 
 Built for [UXmaxx](https://www.encodeclub.com/programmes/uxmaxx-hackathon) (UX weighted at 45%).
 
-| Requirement | How PayGram satisfies it |
-|-------------|--------------------------|
+
+| Requirement       | How PayGram satisfies it                                                |
+| ----------------- | ----------------------------------------------------------------------- |
 | UA SDK + EIP-7702 | Auto-delegate on Arbitrum; Me shows “Powered by Particle UA + EIP-7702” |
-| Embedded wallet | Magic email OTP |
-| Partner tech | Magic + Particle + Arbitrum |
-| Cross-chain | Sends/deposits via `createUniversalTransaction` with unified balance |
-| Consumer UX | One balance, no chain picker, Home + forms + optional Chat |
-| On-chain proof | Five verified vaults on Arbitrum One (see table above) |
+| Embedded wallet   | Magic email OTP                                                         |
+| Partner tech      | Magic + Particle + Arbitrum                                             |
+| Cross-chain       | Sends/deposits via `createUniversalTransaction` with unified balance    |
+| Consumer UX       | One balance, no chain picker, Home + forms + optional Chat              |
+| On-chain proof    | Five verified vaults on Arbitrum One (see table above)                  |
+
 
 ---
 
